@@ -1,0 +1,20 @@
+{
+  "name": "Butler FF",
+  "short_name": "Butler FF",
+  "description": "Weekly NFL fantasy rankings, start/sit, trades, waivers and mock drafts. No betting data.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#EEF2EE",
+  "theme_color": "#1D5A39",
+  "icons": [
+    {"src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png"},
+    {"src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png"},
+    {"src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
+  ],
+  "shortcuts": [
+    {"name": "Start / Sit", "url": "./#startsit"},
+    {"name": "Waiver Wire", "url": "./#waivers"},
+    {"name": "Trade Analyzer", "url": "./#trade"}
+  ]
+}
