@@ -8,7 +8,7 @@ Fantasy football tools for NFL season-long leagues, with no betting data anywher
 - **Waiver Wire**: pickups ranked by value and rising usage; uses your real league rosters after a Sleeper import
 - **Draft Room**: mock draft against bots and a tiered cheat sheet
 - **Dynasty and keeper leagues**: dynasty rankings, values that count future seasons (age curves, draft capital, last season's production), rookie picks in the trade analyzer, a contending/balanced/rebuilding switch, and taxi-squad and IR-slot players kept out of your lineup
-- **Sleeper import**: enter your username, pick a league; brings in your roster, everyone's rosters, scoring and lineup settings, league type, and every team's rookie picks (including traded ones). Re-syncs automatically each time you open the app
+- **Sleeper import**: enter your username, pick a league or import all of them (switch between leagues from a menu; each keeps its own roster, scoring and settings); brings in your roster, everyone's rosters, scoring and lineup settings, league type, and every team's rookie picks (including traded ones). Re-syncs automatically each time you open the app
 
 ## Use it as an app
 

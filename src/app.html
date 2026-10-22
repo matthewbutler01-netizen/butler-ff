@@ -216,6 +216,7 @@ textarea.paste{width:100%;min-height:90px;border:1px solid var(--line);backgroun
 .call-clear{color:var(--good);font-weight:700}
 .summary{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .summary b{font-family:var(--font-data);font-weight:500;font-size:18px}
+.leagueSel{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 6px;font-weight:600;max-width:100%}
 footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--muted);font-size:12px}
 .empty{border:1px dashed var(--line);border-radius:8px;padding:18px;text-align:center;color:var(--muted)}
 @media (max-width:640px){
@@ -275,7 +276,7 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
       <p class="lede">Your best lineup for <span class="wkN">this week</span>, built from the consensus of Butler FF, Sleeper and ESPN projections, checked against the lineup you have set in Sleeper. Any decision can be opened below and judged every way: projections, recent form, usage, matchup, past games against this opponent, home and road splits, and last season.</p>
     </div></div>
     <div class="panel" id="lineupPanel">
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;flex:1">Your <span class="wkN">this week</span> lineup</h3><span id="lineupStatus" class="small muted"></span></div>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;flex:1">Your <span class="wkN">this week</span> lineup</h3><span id="lineupLeague"></span><span id="lineupStatus" class="small muted"></span></div>
       <div id="lineup" style="margin-top:10px"></div>
     </div>
     <div class="panel" id="comparePanel" style="margin-top:16px">
@@ -939,6 +940,7 @@ function closestCall(){
 }
 function renderMine(){
   renderLeagueBar(); renderMyPicks();
+  $('#lineupLeague').innerHTML = leagueSelect() || (league ? `<span class="small"><b>${esc(league.name)}</b></span>` : '');
   const ps = roster.map(id=>BY[id]).filter(Boolean).sort((a,b)=>POS.indexOf(a.p)-POS.indexOf(b.p)||b.wk-a.wk);
   $('#myList').innerHTML = ps.length ? ps.map(p=>`<li style="display:flex;align-items:center;gap:8px">${posTag(p)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.n)} <span class="meta">${esc(p.t)}</span>${injTag(p)}${slotTag(p.id)}</span><span class="num small">${p.opp?f1(p.wk):'BYE'}</span><button class="x" data-star="${esc(p.id)}" aria-label="Remove ${esc(p.n)}">✕</button></li>`).join('')
     : `<li class="empty">No players yet. Import your team from Sleeper, add players here, or star them in Rankings.</li>`;
@@ -1180,6 +1182,25 @@ function renderCheat(){
 
 /* ---------- sleeper import (copy & paste from Sleeper's public API pages) ---------- */
 let league = store.get('league', null); // {id,name,team,taken[],at}
+/* Several leagues: each keeps its own roster, scoring and settings; one is active at a time. */
+let LEAGUES = store.get('leagues', {});
+if(league && league.id && !LEAGUES[league.id]) LEAGUES[league.id] = {league, roster: roster.slice(), S: Object.assign({}, S)};
+function snapshot(){
+  if(!league || !league.id) return;
+  LEAGUES[league.id] = {league, roster: roster.slice(), S: Object.assign({}, S)};
+  store.set('leagues', LEAGUES); store.set('activeLeague', league.id);
+}
+function switchLeague(id){
+  const x = LEAGUES[id]; if(!x) return;
+  league = x.league; roster = x.roster.slice(); S = Object.assign({}, DEF, x.S);
+  store.set('league', league); store.set('roster', roster); store.set('settings', S);
+  wwN = null; trending = null; setAuto(true);
+  renderAll(); syncLeague();
+}
+function leagueSelect(cls){
+  const ids = Object.keys(LEAGUES); if(!league || ids.length<2) return '';
+  return `<select class="leagueSel ${cls||''}" aria-label="League">${ids.map(id=>`<option value="${esc(id)}" ${id===league.id?'selected':''}>${esc(LEAGUES[id].league.name)}</option>`).join('')}</select>`;
+}
 const SL_TEAM = {LAR:'LA', JAC:'JAX', WSH:'WAS'};
 function slToId(sid){ sid = String(sid); if(D.sl[sid]) return D.sl[sid]; const t = SL_TEAM[sid]||sid; return BY['DST-'+t] ? 'DST-'+t : null; }
 function extractJSON(t){
@@ -1215,7 +1236,9 @@ async function loadTrending(){
 }
 function slRenderDirect(b, msg){
   const u = store.get('slUser','');
-  const leagues = SLD.leagues.length ? `<div class="step"><h3><b>2</b>Pick a league</h3><div class="picklist">${SLD.leagues.map(l=>`<button data-league="${esc(l.league_id)}" ${SLD.busy?'disabled':''}><span class="grow"><b>${esc(l.name)}</b></span><span class="small muted">${esc(l.total_rosters)} teams</span></button>`).join('')}</div></div>`
+  const kind = l => l.settings && l.settings.type===2 ? 'dynasty · ' : l.settings && l.settings.type===1 ? 'keeper · ' : '';
+  const leagues = SLD.leagues.length ? `<div class="step"><h3><b>2</b>Pick a league</h3><div class="picklist">${SLD.leagues.map(l=>`<button data-league="${esc(l.league_id)}" ${SLD.busy?'disabled':''}><span class="grow"><b>${esc(l.name)}</b></span><span class="small muted">${kind(l)}${esc(l.total_rosters)} teams${LEAGUES[l.league_id]?' · added':''}</span></button>`).join('')}</div>
+      ${SLD.leagues.length>1?`<div><button class="btn" id="slImportAll" ${SLD.busy?'disabled':''}>Import all ${SLD.leagues.length} leagues</button></div>`:''}</div>`
     : SLD.user ? `<div class="step"><h3><b>2</b>Pick a league</h3><div class="empty">No ${M.season} NFL leagues found for ${esc(SLD.user.display_name||u)}.</div></div>` : '';
   b.innerHTML = `<div class="steps"><div class="step"><h3><b>1</b>Your Sleeper username</h3>
     <div class="adder"><input id="slUser" placeholder="Sleeper username" autocomplete="off" value="${esc(u)}" aria-label="Sleeper username"><button class="btn" id="slFind" ${SLD.busy?'disabled':''}>${SLD.busy?'Working…':'Find my leagues'}</button></div></div>
@@ -1252,12 +1275,22 @@ async function slImportLeague(lid, quiet){
     const sc = mapScoring(lg && lg.scoring_settings, lg && lg.roster_positions, lg && lg.total_rosters, lset);
     league.picks = sc.ltype==='redraft' ? [] : makePicks((rosters||[]).map(r=>r.roster_id), traded, sc.rrounds || S.rrounds || 4);
     store.set('league', league); store.set('slLeagueId', lid);
-    Object.assign(S, sc); store.set('settings', S); wwN = null;
+    const prevS = LEAGUES[lid] ? LEAGUES[lid].S : {};
+    S = Object.assign({}, DEF, {dmode: prevS.dmode || DEF.dmode}, sc); store.set('settings', S); wwN = null;
     hidden = []; store.set('hidden', hidden);
     SL.msg = `Imported ${roster.length} players from “${league.name}”, every rostered player in the league, and your scoring and lineup settings.${S.ltype!=='redraft'?` It's a ${S.ltype} league, so ${S.ltype} values${league.picks.length?' and every team\'s rookie picks':''} are on.`:''}${unmatched?` Skipped ${unmatched} player${unmatched>1?'s':''} with no projection.`:''}`; SL.msgKind='ok';
     renderAll();
   }catch(e){ SL.msg = e.user ? "You're in this league, but no roster belongs to you." : "Couldn't reach Sleeper. Check your connection and try again."; SL.msgKind='err'; if(quiet) renderAll(); }
   SLD.busy=false; slRender();
+}
+async function slImportAll(){
+  const ids = SLD.leagues.map(l=>l.league_id); if(!ids.length) return;
+  const keep = league && ids.includes(league.id) ? league.id : ids[0];
+  let ok = 0;
+  for(const id of ids){ SL.msg = `Importing ${ok+1} of ${ids.length}…`; SL.msgKind=''; slRender(); await slImportLeague(id, true); if(league && league.id===id) ok++; }
+  if(LEAGUES[keep]) switchLeague(keep);
+  SL.msg = `Imported ${ok} of ${ids.length} leagues. Switch between them from the menu at the top of Start / Sit or under My team.`; SL.msgKind = ok ? 'ok' : 'err';
+  slRender();
 }
 function slRender(){
   const b = $('#slBody');
@@ -1355,7 +1388,8 @@ function renderLeagueBar(){
   const el = $('#leagueBar'); if(!el) return;
   if(!league){ el.innerHTML=''; return; }
   const when = new Date(league.at).toLocaleString([], {month:'short', day:'numeric', hour:'numeric', minute:'2-digit'});
-  el.innerHTML = `<div class="leaguebar"><span class="tag BYE" style="margin:0">Sleeper</span><span><b>${esc(league.name)}</b></span><span class="muted">imported ${esc(when)}</span>${league.direct && slDirect ? '<button class="btn alt sm" id="slRefresh">Refresh</button>' : '<button class="btn alt sm" id="openSleeper2">Re-import</button>'}<button class="btn alt sm" id="slForget">Disconnect</button></div>`;
+  const n = Object.keys(LEAGUES).length;
+  el.innerHTML = `<div class="leaguebar"><span class="tag BYE" style="margin:0">Sleeper</span>${n>1 ? leagueSelect() : `<span><b>${esc(league.name)}</b></span>`}<span class="muted">synced ${esc(when)}</span>${league.direct && slDirect ? '<button class="btn alt sm" id="slRefresh">Refresh</button>' : '<button class="btn alt sm" id="openSleeper2">Re-import</button>'}<button class="btn alt sm" id="slAddLeague">Add a league</button><button class="btn alt sm" id="slForget">Remove</button></div>`;
 }
 function openSleeper(){ SL.msg=''; SL.msgKind=''; slRender(); $('#slScrim').hidden=false; }
 slProbe.then(d => { if(d){ renderLeagueBar(); if(view==='waivers') loadTrending(); } });
@@ -1385,7 +1419,7 @@ function renderView(){
   if(view==='waivers') renderWaivers();
   if(view==='draft'){ if(dtView==='mock') renderDraft(); else renderCheat(); }
 }
-function renderAll(){ recompute(); syncFmt(); renderView(); }
+function renderAll(){ recompute(); syncFmt(); renderView(); snapshot(); }
 
 /* ---------- events ---------- */
 document.addEventListener('click', e => {
@@ -1424,7 +1458,10 @@ document.addEventListener('click', e => {
     case 'slFind': slFind(); break;
     case 'slRefresh': if(league) { t.textContent='Refreshing…'; slImportLeague(league.id, true); } break;
     case 'slPasteGo': slReadPaste(); break;
-    case 'slForget': league=null; store.set('league',null); renderAll(); break;
+    case 'slForget': { if(league) delete LEAGUES[league.id]; store.set('leagues', LEAGUES); const next = Object.keys(LEAGUES)[0];
+      if(next) switchLeague(next); else { league=null; store.set('league',null); store.set('activeLeague',null); renderAll(); } break; }
+    case 'slAddLeague': openSleeper(); break;
+    case 'slImportAll': slImportAll(); break;
     case 'wwSleeper': if(!league){ openSleeper(); } else { WW.league=!WW.league; renderWaivers(); } break;
     case 'wwReset': hidden=[]; store.set('hidden',hidden); renderWaivers(); break;
     case 'dStart': case 'dAgain': newDraft(); break;
@@ -1447,6 +1484,7 @@ document.addEventListener('keydown', e => { if(e.key==='Escape'){ $('#scrim').hi
   if(id==='tgIn'||id==='ttIn'){ addTrade(id==='tgIn'?'give':'get', BYLABEL[e.target.value]); e.target.value=''; }
   else if(map[id]) $('#'+map[id]).click(); } });
 $('#q').addEventListener('input', e => { R.q = e.target.value; renderRankings(); });
+document.addEventListener('change', e => { if(e.target.classList && e.target.classList.contains('leagueSel')) switchLeague(e.target.value); });
 $('#wwN').addEventListener('change', e => { wwN = Math.max(0, +e.target.value||0); renderWaivers(); });
 $('#dTeams').addEventListener('change', fillSlots);
 window.addEventListener('hashchange', () => show(location.hash.slice(1)));
