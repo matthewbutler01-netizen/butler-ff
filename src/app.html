@@ -1002,7 +1002,8 @@ function pickupReasons(fa, slot, gain, drop, rosGain, weakPos){
   if(s.ts != null && s.ts >= 0.18) r.push(`Earning ${f0(s.ts*100)}% of his team's targets.`);
   if(trending && trending[fa.id]) r.push(`Added in ${trending[fa.id].toLocaleString()} Sleeper leagues in the last two days.`);
   if(isDyn() && s.age != null && s.age < 24) r.push(`At ${f0(s.age)}, he adds value beyond this season in your ${S.ltype} league.`);
-  if(drop) r.push(`${esc(drop.n)} is the lowest-value player you can cut${rosGain>0?`; ${isDyn()?'dynasty':'rest-of-season'} value goes up by ${f0(rosGain)}`:''}.`);
+  if(gain <= 0.3 && drop) r.push(`${isDyn()?'Dynasty':'Rest-of-season'} value ${f0(fa.val)} vs ${f0(drop.val)} for ${esc(drop.n)}${fa.p==='QB' && S.SFLEX>0 ? '; in superflex, a third QB who can start covers byes and injuries' : ''}.`);
+  if(drop) r.push(`${esc(drop.n)} is the lowest-value player you can cut${rosGain>0 && gain>0.3?`; ${isDyn()?'dynasty':'rest-of-season'} value also goes up by ${f0(rosGain)}`:''}.`);
   return r.slice(0, 4);
 }
 function buildPlaybook(){
@@ -1043,14 +1044,15 @@ function buildPlaybook(){
     if(swaps.length){
       const urgent = swaps.some(({b}) => b && !playing(b)) || empties;
       const first = swaps[0];
-      pb.moves.push({key:'lineup', cat:'Fix your lineup', sev: urgent ? 'red' : 'green', impact: gain,
+      pb.moves.push({key:'lineup', cat:'Fix your lineup', sev: urgent ? 'red' : 'green', impact: gain, rank: gain + (urgent ? 5 : 0),
         title: swaps.length===1 ? `Start ${esc(first.a.n)}${first.b?` over ${esc(first.b.n)}`:''}` : `Make ${swaps.length} lineup changes in Sleeper`,
-        detail: swaps.map(({a,b}) => `Start ${esc(a.n)}${b?`, bench ${esc(b.n)}${!b.opp?' (bye)':NOPLAY.includes(b.tag)?' ('+TAGW[b.tag]+')':''}`:' in your empty spot'}`).join('. ') + '.',
+        detail: swaps.map(({a,b}) => `Start ${esc(a.n)}${b?`, bench ${esc(b.n)}${!b.opp?' (bye)':NOPLAY.includes(b.tag)?' ('+TAGW[b.tag]+')':L.proj.get(a.id)-cons(b)<0.75?' (toss-up)':''}`:' in your empty spot'}`).join('. ') + '.',
         why: swaps.flatMap(({a,b}) => b ? [`<b>${esc(a.n)} over ${esc(b.n)}:</b> ` + reasons(a,b).join(' ')] : [`<b>${esc(a.n)}:</b> fills an empty lineup spot.`]),
         conf: swaps.every(({a,b}) => !b || !playing(b) || L.proj.get(a.id) - cons(b) >= 2) ? 'High' : swaps.some(({a,b}) => b && playing(b) && L.proj.get(a.id) - cons(b) < 0.75) ? 'Low' : 'Medium',
         review: {view:'startsit', ss: first.b ? [first.a.id, first.b.id] : null}});
       swaps.filter(({b}) => b && !playing(b)).forEach(({a,b}) => pb.brief.push({sev:'red', html:`${esc(b.n)} is in your Sleeper lineup but is ${!b.opp?'on bye':TAGW[b.tag]}. Start ${esc(a.n)} instead.`}));
-      swaps.filter(({b}) => b && playing(b)).forEach(({a,b}) => pb.brief.push({sev:'green', html:`${esc(a.n)} is a better start than ${esc(b.n)} (+${f1(L.proj.get(a.id)-cons(b))}).`}));
+      swaps.filter(({b}) => b && playing(b)).forEach(({a,b}) => { const d = L.proj.get(a.id)-cons(b);
+        pb.brief.push(d < 0.75 ? {sev:'yellow', html:`${esc(a.n)} vs ${esc(b.n)} is a toss-up (${f1(d)} apart). Either is fine.`} : {sev:'green', html:`${esc(a.n)} is a better start than ${esc(b.n)} (+${f1(d)}).`}); });
       if(empties) pb.brief.push({sev:'red', html:`${empties} lineup spot${empties>1?'s are':' is'} empty in Sleeper.`});
     }
   } else if(roster.length){
@@ -1076,11 +1078,12 @@ function buildPlaybook(){
     const best = cand[0];
     if(best){
       const fa = best.fa, faab = league.faab ? league.faab.budget - league.faab.used : null;
-      pb.moves.push({key:'add-'+fa.id, cat:'Improve your roster', sev:'green', impact: Math.max(best.gain, 0) + Math.max(0,best.rosGain)/10,
+      const wk = Math.max(best.gain, 0);
+      pb.moves.push({key:'add-'+fa.id, cat:'Improve your roster', sev:'green', impact: wk, rank: wk + Math.min(1.5, Math.max(0,best.rosGain)/40), longTerm: wk <= 0.3,
         title: `Add ${esc(fa.n)} (${fa.p}, ${esc(fa.t)})${benchDrop?`, drop ${esc(benchDrop.n)}`:''}`,
         detail: (best.gain > 0.3 ? `He'd start for you this week (+${f1(best.gain)}).` : `A stash for later weeks${isDyn()?' and future seasons':''}.`) + (faab!=null ? ` You have $${faab} of FAAB left.` : ''),
         why: pickupReasons(fa, best.slot, best.gain, benchDrop, best.rosGain, weakPos),
-        conf: best.gain >= 2 || best.rosGain >= 25 ? 'High' : best.gain >= 0.75 || best.rosGain >= 10 ? 'Medium' : 'Low',
+        conf: best.gain >= 2 ? 'High' : best.gain >= 0.75 || best.rosGain >= 40 ? 'Medium' : 'Low',
         review: {view:'waivers'}, alts: cand.slice(1,3).map(c=>c.fa)});
       pb.brief.push({sev:'green', html:`${esc(fa.n)} is available in your league${best.gain>0.3?` and would start for you this week`:''}.`});
     }
@@ -1103,7 +1106,7 @@ function buildPlaybook(){
   const injStale = M.injWeek < M.week;
   if(injStale) prepWhy.push(`Week ${M.week} practice reports come out Wednesday through Friday. Butler checks for them every hour, so come back after Thursday's report.`);
   if(qs.length || early.length){
-    pb.moves.push({key:'prep', cat:'Prepare for Sunday', sev: qs.length ? 'yellow' : 'yellow', impact: qs.reduce((t,p)=>t + 0.3*L.proj.get(p.id), 0) + early.length*0.2,
+    pb.moves.push({key:'prep', cat:'Prepare for Sunday', sev:'yellow', impact: 0, rank: qs.reduce((t,p)=>t + 0.3*L.proj.get(p.id), 0) + early.length*0.2,
       title: qs.length ? `Monitor ${qs.length===1 ? esc(qs[0].n) : qs.length+' injury situations'} before kickoff` : `${early.length===1 ? esc(early[0].n)+' plays' : early.length+' of your starters play'} ${kickOf(early[0])[1].split(' ')[0]==='Thu'?'Thursday night':'before Sunday'}`,
       detail: qs.length ? `${qs.map(p=>esc(lastName(p.n))).join(' and ')} ${qs.length>1?'are':'is'} questionable.${early.length?` ${early.map(p=>esc(lastName(p.n))).join(', ')} ${early.length>1?'play':'plays'} early.`:''}` : `Set your lineup before ${kickOf(early[0])[1]}.`,
       why: prepWhy, conf: injStale ? 'Medium' : 'High', review: qs.length ? {view:'startsit'} : null});
@@ -1113,7 +1116,7 @@ function buildPlaybook(){
   (pb.threats||[]).forEach(([p,x]) => pb.brief.push({sev:'yellow', html:`Your opponent's ${(posName[p.p]||p.p).toLowerCase()} ${esc(p.n)} has a favorable matchup (${grade(p.m)} ${p.home?'vs':'at'} ${esc(p.opp)}, ${f1(x)} projected).`}));
   if(pb.oppOut && pb.oppOut.length) pb.brief.push({sev:'green', html:`Your opponent is starting ${pb.oppOut.map(p=>`${esc(p.n)} (${!p.opp?'bye':TAGW[p.tag]})`).join(', ')}.`});
   // ----- ranking, confidence, review time -----
-  pb.moves.sort((a,b)=>b.impact-a.impact);
+  pb.moves.sort((a,b)=>(b.rank||0)-(a.rank||0));
   const dismissed = store.get('pbDismissed', {}), dkey = `${league?league.id:'none'}-${M.week}`;
   pb.dkey = dkey; pb.dismissedMoves = dismissed[dkey] || [];
   const active = pb.moves.filter(m => !pb.dismissedMoves.includes(m.key));
@@ -1166,7 +1169,7 @@ function renderPlaybook(){
   const shown = active.slice(0,3);
   cats.forEach(c => { if(shown.length<3 && !pb.moves.some(m=>m.cat===c)) shown.push({key:'done-'+c, cat:c, sev:'done', title: c==='Fix your lineup' ? (pb.noSleeperLineup ? 'Re-import to compare with your Sleeper lineup' : 'Your lineup is already the best one') : c==='Improve your roster' ? 'No free agent beats what you have' : 'No injury worries among your starters', detail:'', why:[], done:true}); });
   const moves = shown.map((m,i)=>`<div class="move ${m.sev}">
-      <div class="mh"><span class="mn">${i+1}</span><div class="mt"><div class="eyebrow">${m.cat}</div>${m.title}</div>${m.done?'<span class="okc">Done</span>':`${m.impact>0.05?`<span class="imp">+${f1(m.impact)} pts</span>`:''}<span class="pill ${m.conf}">${m.conf}</span>`}</div>
+      <div class="mh"><span class="mn">${i+1}</span><div class="mt"><div class="eyebrow">${m.cat}</div>${m.title}</div>${m.done?'<span class="okc">Done</span>':`${m.impact>0.05?`<span class="imp">+${f1(m.impact)} pts this week</span>`:m.longTerm?`<span class="imp">Long-term value</span>`:''}<span class="pill ${m.conf}">${m.conf}</span>`}</div>
       ${m.detail?`<div class="small">${m.detail}</div>`:''}
       ${!m.done && (PB_OPEN.why || PB_OPEN[m.key]) ? `<ul class="why">${m.why.map(w=>`<li>${w}</li>`).join('')}</ul>${m.alts && m.alts.length?`<div class="small muted">Also worth a look: ${m.alts.map(a=>`${esc(a.n)} (${a.p}, ${esc(a.t)})`).join(', ')}.</div>`:''}` : ''}
       ${m.done?'':`<div class="acts">${m.review?`<button class="btn sm" data-pbreview="${esc(m.key)}">Review</button>`:''}<button class="btn alt sm" data-pbwhy="${esc(m.key)}">${PB_OPEN.why||PB_OPEN[m.key]?'Hide why':'See why'}</button><button class="btn alt sm" data-pbdismiss="${esc(m.key)}">Dismiss</button></div>`}
