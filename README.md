@@ -7,7 +7,8 @@ Fantasy football tools for NFL season-long leagues, with no betting data anywher
 - **Trade Analyzer**: rest-of-season value over a replacement-level starter in your league
 - **Waiver Wire**: pickups ranked by value and rising usage; uses your real league rosters after a Sleeper import
 - **Draft Room**: mock draft against bots and a tiered cheat sheet
-- **Sleeper import**: enter your username, pick a league; brings in your roster, everyone's rosters, and your scoring and lineup settings
+- **Dynasty and keeper leagues**: dynasty rankings, values that count future seasons (age curves, draft capital, last season's production), rookie picks in the trade analyzer, a contending/balanced/rebuilding switch, and taxi-squad and IR-slot players kept out of your lineup
+- **Sleeper import**: enter your username, pick a league; brings in your roster, everyone's rosters, scoring and lineup settings, league type, and every team's rookie picks (including traded ones). Re-syncs automatically each time you open the app
 
 ## Use it as an app
 
@@ -21,7 +22,9 @@ It opens full screen with its own icon and works offline with the last projectio
 
 ## How it updates
 
-A GitHub Action (`.github/workflows/update.yml`) runs every morning at 6:20 AM Central. It downloads the latest public data, rebuilds the projections and redeploys the site. Run it by hand from the **Actions** tab › *Update projections and deploy* › **Run workflow**.
+- **Every hour**, a GitHub Action (`.github/workflows/update.yml`) downloads the latest public data and rebuilds the projections. It redeploys only when something changed, so most hourly runs finish without a deploy.
+- **Every time you open or refresh the app**, it loads the newest projections (`data.json`, never from the browser cache) and re-syncs your Sleeper league. If the app has been sitting open in the background, it checks again when you come back to it.
+- Run an update by hand from the **Actions** tab › *Update projections and deploy* › **Run workflow**.
 
 The week projected is the one after the last week whose games are all final. Before Week 1 finishes, the build stops with a message and the previous site stays up.
 
@@ -29,7 +32,7 @@ The week projected is the one after the last week whose games are all final. Bef
 
 | Source | Used for |
 | --- | --- |
-| [nflverse](https://github.com/nflverse/nflverse-data) | weekly player stats, schedule, injury reports, snap counts, depth charts, player status |
+| [nflverse](https://github.com/nflverse/nflverse-data) | weekly player stats (this season and last), schedule, injury reports, snap counts, depth charts, player status, age and draft capital |
 | [DynastyProcess](https://github.com/dynastyprocess/data) | Sleeper ID ↔ NFL ID crosswalk |
 | [Sleeper API](https://docs.sleeper.com/) | league import and trending adds, called from your browser (free for non-commercial use) |
 
@@ -38,6 +41,8 @@ The schedule file includes betting columns; `scripts/model.py` drops them before
 ## Projection method
 
 `scripts/model.py`: per-game volume (attempts, carries, targets) weighted toward recent weeks; efficiency (yards and TDs per opportunity) shrunk toward position averages; adjusted by each defense's fantasy points allowed to the position; discounted for injury status; summed over the remaining schedule with byes. Kickers and defenses project from team scoring and opponent tendencies. Every number is stored as a stat line, so the page rescores it for your league's settings.
+
+Dynasty values (computed in the page, so they follow your scoring): this season's points over a replacement starter, plus the next four seasons. Each future season starts from a healthy per-game level (this season, plus last season at half weight, pulled toward replacement on small samples; rookies with no games start from draft round and position), ages by position (RBs fall off from 27, WRs from 28, TEs from 29, QBs from 33), gets a lift for young high picks, and counts expected points over replacement with uncertainty that widens each year out. Seasons are weighted by team outlook: contending, balanced or rebuilding. In superflex leagues QB replacement sits deeper, since nearly every team rosters a third QB. A rookie pick is worth about what the player taken in that slot becomes; next year's slots are estimated from current standings.
 
 ## Run locally
 

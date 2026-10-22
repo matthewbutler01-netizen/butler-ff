@@ -99,7 +99,48 @@ def shrink(made, opp, mean, k):
 dc_team = dc.drop_duplicates("gsis_id").set_index("gsis_id").team.to_dict()
 dc_rank = dc[dc.pos_abb.isin(SKILL + ["PK"])].sort_values("pos_rank").drop_duplicates("gsis_id") \
     .set_index("gsis_id")[["pos_abb", "pos_rank"]].to_dict("index")
-pstat = players.set_index("gsis_id")[["status", "birth_date", "years_of_experience", "jersey_number"]].to_dict("index")
+pstat = players.set_index("gsis_id")[["status", "birth_date", "years_of_experience", "jersey_number",
+                                      "draft_year", "draft_round", "draft_pick", "last_season", "latest_team",
+                                      "display_name", "position"]].to_dict("index")
+TODAY = pd.Timestamp.now(tz="America/Chicago").tz_localize(None)
+
+def bio(pid):
+    """Age (years, 1 decimal), NFL experience and draft capital, for dynasty values."""
+    st = pstat.get(pid, {})
+    bd = pd.to_datetime(st.get("birth_date"), errors="coerce")
+    age = round((TODAY - bd).days / 365.25, 1) if pd.notna(bd) else None
+    dy, dr, dp = st.get("draft_year"), st.get("draft_round"), st.get("draft_pick")
+    return dict(age=age,
+                exp=int(SEASON - dy) if pd.notna(dy) else (int(st["years_of_experience"]) if pd.notna(st.get("years_of_experience")) else None),
+                dr=int(dr) if pd.notna(dr) else 0, dp=int(dp) if pd.notna(dp) else 0)
+
+# ---------- last season, per game (regular season) ----------
+PREV = {}
+try:
+    pv = pd.read_csv(f"{DATA}/week_prev.csv", low_memory=False)
+    pv = pv[(pv.season_type == "REG") & pv.position.isin(SKILL)].copy()
+    for c in ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds",
+              "receptions", "receiving_yards", "receiving_tds", "rushing_fumbles_lost",
+              "receiving_fumbles_lost", "sack_fumbles_lost", "fantasy_points_ppr"]:
+        pv[c] = num(pv[c])
+    pv["fum"] = pv.rushing_fumbles_lost + pv.receiving_fumbles_lost + pv.sack_fumbles_lost
+    agg = pv.groupby("player_id").agg(
+        gp=("week", "count"), py=("passing_yards", "mean"), ptd=("passing_tds", "mean"),
+        pint=("passing_interceptions", "mean"), ry=("rushing_yards", "mean"), rtd=("rushing_tds", "mean"),
+        rec=("receptions", "mean"), rey=("receiving_yards", "mean"), retd=("receiving_tds", "mean"),
+        fum=("fum", "mean"), ppr=("fantasy_points_ppr", "mean"), pos=("position", "last"),
+        name=("player_display_name", "last"))
+    for pid, r in agg.iterrows():
+        PREV[pid] = r
+except FileNotFoundError:
+    pass
+
+def prev_line(pid):
+    """Last season per game: [pass_yd, pass_td, int, rush_yd, rush_td, rec, rec_yd, rec_td, fum, games]."""
+    r = PREV.get(pid)
+    if r is None:
+        return None
+    return [round(float(x), 2) for x in (r.py, r.ptd, r.pint, r.ry, r.rtd, r.rec, r.rey, r.retd, r.fum)] + [int(r.gp)]
 inj_last = inj[inj.week == inj.week.max()].dropna(subset=["report_status"]) \
     .drop_duplicates("gsis_id", keep="last").set_index("gsis_id")[["report_status", "report_primary_injury"]].to_dict("index")
 
@@ -239,8 +280,46 @@ for pid, d in sk.groupby("player_id"):
         pg={k: round(v, 2) for k, v in proj.items()},
         h=hist, sn=sn, tr=round(trend, 1),
         ts=round(float(np.nanmean(ts[-2:])), 3) if len(ts) and pos != "QB" else None,
-        exp=int(st.get("years_of_experience")) if pd.notna(st.get("years_of_experience")) else None,
+        **bio(pid), pv=prev_line(pid),
     ))
+
+# ---------- dynasty-only players: no games this season but still part of the long-term picture ----------
+# Injured all year, suspended, or rookies not yet playing. They get no weekly or ROS projection,
+# only last season's production (or draft capital) for dynasty values.
+have = {p["id"] for p in out_players}
+extra = []
+for pid, st in pstat.items():
+    if pid in have or st.get("position") not in SKILL:
+        continue
+    if not (pd.notna(st.get("last_season")) and int(st["last_season"]) >= SEASON):
+        continue
+    stat = st.get("status")
+    if stat in ("CUT", "RET", "DEV"):
+        continue
+    pvr = PREV.get(pid)
+    b = bio(pid)
+    rookie = pd.notna(st.get("draft_year")) and int(st["draft_year"]) == SEASON and b["dr"] and b["dr"] <= 3
+    proven = pvr is not None and pvr.gp >= 4 and pvr.ppr >= 7
+    if not (rookie or proven):
+        continue
+    team = dc_team.get(pid, st.get("latest_team"))
+    if not isinstance(team, str) or team not in teams:
+        continue
+    rep_ = inj_last.get(pid, {})
+    tag = "IR" if stat in ("RES", "PUP", "NWT", "RSN", "RSR") else "SUSP" if stat == "SUS" else \
+          (rep_.get("report_status") or "")[:1] if rep_.get("report_status") in ("Out", "Doubtful", "Questionable") else ""
+    tag = {"Q": "Q", "O": "O", "D": "D"}.get(tag, tag)
+    zero = {k: 0.0 for k in ("pass_att", "pass_yd", "pass_td", "int", "car", "rush_yd", "rush_td",
+                             "tgt", "rec", "rec_yd", "rec_td", "fum")}
+    opp = sched.get((team, CUR_WEEK), (None, None))
+    extra.append(dict(
+        id=pid, n=str(st.get("display_name")), p=st["position"], t=team, prevT="", gp=0, tag=tag,
+        inj=str(rep_.get("report_primary_injury") or "") if tag else "", dc="", dyn=1,
+        wk=dict(opp=opp[0], home=opp[1], m=1.0, c=dict(zero)),
+        ros=dict(c=dict(zero), g=sum(1 for wk in range(CUR_WEEK, 19) if (team, wk) in sched), sos=1.0),
+        pg=dict(zero), h={}, sn={}, tr=0.0, ts=None, **b, pv=prev_line(pid)))
+out_players += extra
+print("dynasty-only players", len(extra))
 
 # ---------- kickers ----------
 k = w[w.position == "K"].copy()

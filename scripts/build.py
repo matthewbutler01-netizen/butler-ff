@@ -1,6 +1,8 @@
-"""Assemble the site: src/app.html + data.json -> site/index.html, plus the app manifest, icons and offline worker.
+"""Assemble the site: src/app.html -> site/index.html, data.json beside it (fetched fresh on every visit),
+plus the app manifest, icons and offline worker.
 
-Usage: python3 scripts/build.py data/data.json site
+Usage: python3 scripts/build.py data/data.json site            # hosted site
+       python3 scripts/build.py data/data.json out --single    # one self-contained HTML file with data inside
 """
 import json, shutil, sys
 from pathlib import Path
@@ -10,7 +12,8 @@ data_path, out = Path(sys.argv[1]), Path(sys.argv[2])
 out.mkdir(parents=True, exist_ok=True)
 
 app = (ROOT / "src/app.html").read_text()
-data = data_path.read_text().replace("</", "<\\/")
+single = "--single" in sys.argv
+data = data_path.read_text().replace("</", "<\\/") if single else ""
 meta = json.loads(data_path.read_text())["meta"]
 
 head = """<!doctype html><html lang="en"><head><meta charset="utf-8">
@@ -34,6 +37,12 @@ if ('serviceWorker' in navigator) {
 split = app.index('<header class="top">')
 page = head + app[:split] + "</head><body>\n" + app[split:].replace("__DATA__", data) + sw + "</body></html>\n"
 (out / "index.html").write_text(page)
+if single:
+    (out / "butler-ff.html").write_text(page.replace(sw, ""))
+    (out / "index.html").unlink()
+    print(f"Built self-contained Week {meta['week']} → {out/'butler-ff.html'}")
+    sys.exit(0)
+shutil.copyfile(data_path, out / "data.json")
 shutil.copytree(ROOT / "public", out, dirs_exist_ok=True)
 # Bump the worker's cache name each build so installed apps pick up new projections.
 swp = out / "sw.js"

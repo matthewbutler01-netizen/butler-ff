@@ -2,8 +2,9 @@ name: Update projections and deploy
 
 on:
   schedule:
-    # 6:20 AM Central, every day (fresh stats Tuesday, injury reports Wed–Sat, depth charts any day)
-    - cron: "20 11 * * *"
+    # Every hour. nflverse refreshes stats after games, injury reports through the week and depth charts
+    # daily; a run that finds no new data stops before deploying.
+    - cron: "17 * * * *"
   push:
     branches: [main]
   workflow_dispatch:
@@ -15,11 +16,13 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.diff.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -32,13 +35,37 @@ jobs:
         run: python scripts/model.py data data/data.json
       - name: Build site
         run: python scripts/build.py data/data.json site
+      - name: Compare with the live site
+        id: diff
+        env:
+          LIVE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}/data.json
+          EVENT: ${{ github.event_name }}
+        run: |
+          python - <<'PY'
+          import json, os, urllib.request
+          def core(d):
+              d = dict(d); d["meta"] = {k: v for k, v in d["meta"].items() if k != "built"}
+              return json.dumps(d, sort_keys=True)
+          new = core(json.load(open("site/data.json")))
+          try:
+              old = core(json.load(urllib.request.urlopen(os.environ["LIVE_URL"], timeout=30)))
+          except Exception as e:
+              print("Live data not readable:", e); old = None
+          changed = os.environ["EVENT"] != "schedule" or old != new
+          print("Deploying." if changed else "No new data since the last deploy; skipping.")
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"changed={'true' if changed else 'false'}\n")
+          PY
       - uses: actions/configure-pages@v5
+        if: steps.diff.outputs.changed == 'true'
       - uses: actions/upload-pages-artifact@v3
+        if: steps.diff.outputs.changed == 'true'
         with:
           path: site
 
   deploy:
     needs: build
+    if: needs.build.outputs.changed == 'true'
     runs-on: ubuntu-latest
     environment:
       name: github-pages
