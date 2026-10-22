@@ -228,7 +228,7 @@ for pid, d in sk.groupby("player_id"):
         continue  # cut / off roster
     if roster_status in ("CUT", "RET"):
         continue
-    if d.fantasy_points_ppr.sum() < 3 and d.week.max() < LAST_WEEK - 1:
+    if d.fantasy_points_ppr.sum() < 3 and d.week.max() < LAST_WEEK - 1 and not in_dc:
         continue
     pr = prior[pos]
     n = len(d)
@@ -362,7 +362,8 @@ for pid, st in pstat.items():
     pvr = PREV.get(pid)
     b = bio(pid)
     rookie = pd.notna(st.get("draft_year")) and int(st["draft_year"]) == SEASON and b["dr"] and b["dr"] <= 3
-    proven = pvr is not None and pvr.gp >= 4 and pvr.ppr >= 7
+    # anyone on an NFL roster with NFL production last season (injured, suspended, buried on the depth chart)
+    proven = pvr is not None and pvr.gp >= 1
     if not (rookie or proven):
         continue
     team = dc_team.get(pid, st.get("latest_team"))
