@@ -1255,33 +1255,45 @@ async function slFind(){
   }catch(e){ SL.msg = "Couldn't reach Sleeper. Check your connection and try again."; SL.msgKind='err'; }
   SLD.busy=false; slRender();
 }
-async function slImportLeague(lid, quiet){
+/* background = true: an automatic re-sync. If you've switched to another league by the time Sleeper answers,
+   the result is saved for that league only and the one on screen is left alone. */
+async function slImportLeague(lid, quiet, background){
   const uid = store.get('slUserId','');
-  SLD.busy=true; if(!quiet){ SL.msg='Importing…'; SL.msgKind=''; slRender(); }
+  if(!background){ SLD.busy=true; if(!quiet){ SL.msg='Importing…'; SL.msgKind=''; slRender(); } }
   try{
     const [lg, rosters, users, traded] = await Promise.all([slFetch('league/'+lid), slFetch(`league/${lid}/rosters`), slFetch(`league/${lid}/users`).catch(()=>[]), slFetch(`league/${lid}/traded_picks`).catch(()=>[])]);
     const mineR = (rosters||[]).find(r=>r.owner_id===uid || (r.co_owners||[]).includes(uid));
     if(!mineR) throw Object.assign(new Error('noteam'), {user:true});
     const team = (users||[]).find(x=>x.user_id===uid);
     const ids = mineR.players||[], mine = ids.map(slToId).filter(Boolean), unmatched = ids.length - mine.length;
-    roster = Array.from(new Set(mine)); store.set('roster', roster);
-    if(!quiet) setAuto(true);
-    league = {id: lid, name: lg && lg.name || 'Sleeper league', team: team && team.metadata && team.metadata.team_name || (SLD.user && SLD.user.display_name) || '',
+    const newRoster = Array.from(new Set(mine));
+    const newLeague = {id: lid, name: lg && lg.name || 'Sleeper league', team: team && team.metadata && team.metadata.team_name || (SLD.user && SLD.user.display_name) || '',
               taken: Array.from(new Set((rosters||[]).flatMap(r=>r.players||[]).map(slToId).filter(Boolean))), at: Date.now(), direct: true,
               myRid: mineR.roster_id, teams: teamsFrom(rosters, users),
               taxi: (mineR.taxi||[]).map(slToId).filter(Boolean), reserve: (mineR.reserve||[]).map(slToId).filter(Boolean),
               starters: sleeperStarters(mineR.starters, lg && lg.roster_positions)};
     const lset = (lg && lg.settings) || {};
     const sc = mapScoring(lg && lg.scoring_settings, lg && lg.roster_positions, lg && lg.total_rosters, lset);
-    league.picks = sc.ltype==='redraft' ? [] : makePicks((rosters||[]).map(r=>r.roster_id), traded, sc.rrounds || S.rrounds || 4);
-    store.set('league', league); store.set('slLeagueId', lid);
+    newLeague.picks = sc.ltype==='redraft' ? [] : makePicks((rosters||[]).map(r=>r.roster_id), traded, sc.rrounds || 4);
     const prevS = LEAGUES[lid] ? LEAGUES[lid].S : {};
-    S = Object.assign({}, DEF, {dmode: prevS.dmode || DEF.dmode}, sc); store.set('settings', S); wwN = null;
-    hidden = []; store.set('hidden', hidden);
-    SL.msg = `Imported ${roster.length} players from “${league.name}”, every rostered player in the league, and your scoring and lineup settings.${S.ltype!=='redraft'?` It's a ${S.ltype} league, so ${S.ltype} values${league.picks.length?' and every team\'s rookie picks':''} are on.`:''}${unmatched?` Skipped ${unmatched} player${unmatched>1?'s':''} with no projection.`:''}`; SL.msgKind='ok';
+    const newS = Object.assign({}, DEF, {dmode: prevS.dmode || DEF.dmode}, sc);
+    if(background && (!league || league.id !== lid)){
+      LEAGUES[lid] = {league: newLeague, roster: newRoster, S: newS}; store.set('leagues', LEAGUES);
+      return;
+    }
+    roster = newRoster; store.set('roster', roster);
+    if(!quiet) setAuto(true);
+    league = newLeague; store.set('league', league); store.set('slLeagueId', lid);
+    S = newS; store.set('settings', S); wwN = null;
+    if(!background){ hidden = []; store.set('hidden', hidden); }
+    if(!background) SL.msg = `Imported ${roster.length} players from “${league.name}”, every rostered player in the league, and your scoring and lineup settings.${S.ltype!=='redraft'?` It's a ${S.ltype} league, so ${S.ltype} values${league.picks.length?' and every team\'s rookie picks':''} are on.`:''}${unmatched?` Skipped ${unmatched} player${unmatched>1?'s':''} with no projection.`:''}`, SL.msgKind='ok';
     renderAll();
-  }catch(e){ SL.msg = e.user ? "You're in this league, but no roster belongs to you." : "Couldn't reach Sleeper. Check your connection and try again."; SL.msgKind='err'; if(quiet) renderAll(); }
-  SLD.busy=false; slRender();
+  }catch(e){
+    if(background) return;
+    SL.msg = e.user ? "You're in this league, but no roster belongs to you." : "Couldn't reach Sleeper. Check your connection and try again."; SL.msgKind='err'; if(quiet) renderAll();
+  }finally{
+    if(!background){ SLD.busy=false; slRender(); }
+  }
 }
 async function slImportAll(){
   const ids = SLD.leagues.map(l=>l.league_id); if(!ids.length) return;
@@ -1509,7 +1521,7 @@ async function checkForNewData(){
       el.innerHTML = `<span>New projections are ready.</span><button class="btn sm" data-reload="1">Reload</button>`; document.body.appendChild(el); }
   }catch(e){}
 }
-function syncLeague(){ if(league && league.direct && slDirect && Date.now()-league.at > 60000) slImportLeague(league.id, true); }
+function syncLeague(){ if(league && league.direct && slDirect && Date.now()-league.at > 60000) slImportLeague(league.id, true, true); }
 slProbe.then(ok => { if(ok) syncLeague(); });
 document.addEventListener('visibilitychange', () => {
   if(document.visibilityState!=='visible' || Date.now()-lastCheck < 60000) return;
