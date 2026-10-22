@@ -3,7 +3,7 @@
 Fantasy football tools for NFL season-long leagues, with no betting data anywhere: no odds, lines, props or sportsbook links.
 
 - **Rankings**: this week and rest of season, by position or overall, with tiers, matchup grades and floor-to-ceiling ranges
-- **Start / Sit**: compare up to four players across several lenses: projections from Butler FF, Sleeper and ESPN (averaged into a consensus), recent form, usage-based expected points, matchup, every game against this week's opponent since two seasons ago, home/road splits, and last season. Plus an optimal lineup for your roster
+- **Start / Sit**: your best lineup from your actual roster, built from the consensus of Butler FF, Sleeper and ESPN projections and checked against the lineup you have set in Sleeper (with the exact changes to make, and warnings for starters who are out or on bye). Each starting spot shows your best bench alternative and how close the call is; the closest call opens automatically in the comparison tool. Compare up to four players across several lenses: projections from Butler FF, Sleeper and ESPN (averaged into a consensus), recent form, usage-based expected points, matchup, every game against this week's opponent since two seasons ago, home/road splits, and last season. Plus an optimal lineup for your roster
 - **Trade Analyzer**: rest-of-season value over a replacement-level starter in your league
 - **Waiver Wire**: pickups ranked by value and rising usage; uses your real league rosters after a Sleeper import
 - **Draft Room**: mock draft against bots and a tiered cheat sheet

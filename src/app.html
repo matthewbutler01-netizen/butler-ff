@@ -206,6 +206,16 @@ textarea.paste{width:100%;min-height:90px;border:1px solid var(--line);backgroun
 .lens td.lead{background:var(--good-bg)}
 .lens td.lead .lv{color:var(--good)}
 .lens tr.cons th, .lens tr.cons td{border-bottom:2px solid var(--line)}
+.lineup th, .lineup td{white-space:normal}
+.lineup td.slotc{font-family:var(--font-display);font-weight:800;letter-spacing:.06em;color:var(--muted);font-size:14px;width:56px}
+.lineup .pn{font-weight:600}
+.lineup .sub{font-size:11px;color:var(--muted);margin-top:1px}
+.chg{display:inline-block;font-size:10px;font-weight:700;letter-spacing:.04em;border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:1px;background:var(--flag);color:var(--flag-ink)}
+.okc{display:inline-block;font-size:10px;font-weight:700;border-radius:3px;padding:1px 5px;margin-left:6px;vertical-align:1px;background:var(--good-bg);color:var(--good)}
+.call-close{color:var(--warn);font-weight:700}
+.call-clear{color:var(--good);font-weight:700}
+.summary{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.summary b{font-family:var(--font-data);font-weight:500;font-size:18px}
 footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--muted);font-size:12px}
 .empty{border:1px dashed var(--line);border-radius:8px;padding:18px;text-align:center;color:var(--muted)}
 @media (max-width:640px){
@@ -262,9 +272,14 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
   <section class="view" id="v-startsit" hidden>
     <div class="head"><div>
       <h1>Start / Sit</h1>
-      <p class="lede">Compare up to four players for <span class="wkN">this week</span>. Each is judged several ways: projections from Butler FF, Sleeper and ESPN, recent form, usage, matchup, past games against this opponent, home and road splits, and last season.</p>
+      <p class="lede">Your best lineup for <span class="wkN">this week</span>, built from the consensus of Butler FF, Sleeper and ESPN projections, checked against the lineup you have set in Sleeper. Any decision can be opened below and judged every way: projections, recent form, usage, matchup, past games against this opponent, home and road splits, and last season.</p>
     </div></div>
-    <div class="panel">
+    <div class="panel" id="lineupPanel">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h3 style="margin:0;flex:1">Your <span class="wkN">this week</span> lineup</h3><span id="lineupStatus" class="small muted"></span></div>
+      <div id="lineup" style="margin-top:10px"></div>
+    </div>
+    <div class="panel" id="comparePanel" style="margin-top:16px">
+      <h3 style="margin-bottom:10px">Compare players</h3>
       <div class="adder">
         <input id="ssInput" list="plist" placeholder="Add a player to compare" aria-label="Add a player to compare">
         <button class="btn" id="ssAdd">Add</button>
@@ -272,17 +287,13 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
       </div>
       <div id="ssOut"></div>
     </div>
-    <div class="grid2" style="margin-top:16px">
+    <div style="margin-top:16px">
       <div class="panel">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:10px"><h3 style="margin:0;flex:1">My team</h3><button class="btn sm" id="openSleeper">Import from Sleeper</button></div>
         <div id="leagueBar"></div>
         <div class="adder" style="margin-top:8px"><input id="myInput" list="plist" placeholder="Add a player you roster" aria-label="Add a player you roster"><button class="btn" id="myAdd">Add</button></div>
         <ul id="myList" style="list-style:none;margin:10px 0 0;padding:0;display:grid;gap:4px"></ul>
         <div id="myPicks"></div>
-      </div>
-      <div class="panel">
-        <h3>Optimal <span class="wkN">this week</span> lineup</h3>
-        <div id="lineup"></div>
       </div>
     </div>
   </section>
@@ -719,7 +730,11 @@ function openPlayer(id){
 /* ---------- start / sit ---------- */
 let ss = store.get('ss', null);
 let ssExample = false;
-function initSS(){ if(ss) return; // example: two receivers ranked next to each other this week
+let ssAuto = store.get('ssAuto', true);   // true: the compare tool shows your closest lineup call
+let ssAutoSlot = '';
+function initSS(){
+  if(ssAuto && roster.length){ const c = closestCall(); if(c){ ss = c.ids; ssAutoSlot = c.slot; ssExample = false; return; } }
+  if(ss) return; // example: two receivers ranked next to each other this week
   const wrs = ALL.filter(p=>p.p==='WR' && p.opp && !p.tag).sort((a,b)=>b.wk-a.wk);
   ss = wrs.length>24 ? [wrs[22].id, wrs[23].id] : []; ssExample = true; }
 const phi = z => { const t=1/(1+0.2316419*Math.abs(z)); const d=0.3989423*Math.exp(-z*z/2); const pr=d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>0?1-pr:pr; };
@@ -756,12 +771,12 @@ async function loadEspnProj(){
 }
 async function loadOutside(force){
   if(OUT.status==='loading' || (!force && OUT.status==='done' && Date.now()-OUT.at < 15*60000)) return;
-  OUT.status = 'loading'; if(view==='startsit') renderSS();
+  OUT.status = 'loading';
   const r = await Promise.allSettled([loadSleeperProj(), loadEspnProj()]);
   if(r[0].status==='rejected') OUT.sleeper = null;
   if(r[1].status==='rejected') OUT.espn = null;
   OUT.status = 'done'; OUT.at = Date.now();
-  if(view==='startsit') renderSS();
+  if(view==='startsit'){ renderSS(); renderMine(); }
 }
 const outPts = (c, pos) => c==null ? null : c.pts!=null ? c.pts : compPts(c, pos) + (c.two||0)*2;
 const linePts = (a, pos) => a[0]*0.04 + a[1]*S.ptd + a[2]*S.int + a[3]*0.1 + a[4]*6 + a[5]*(S.rec+(pos==='TE'?S.tep:0)) + a[6]*0.1 + a[7]*6 + a[8]*-2 + (a[9]||0)*2;
@@ -888,32 +903,91 @@ function renderSS(){
     if(floorPick!==best) extra += ` If you're a heavy favorite, ${esc(floorPick.n)} has the safer floor.`;
     call = `<div class="callout"><b>${conf}: start ${esc(best.n)}.</b> The consensus projection (${n}) puts ${bn} ${f1(proj(best)-proj(second))} points ahead of ${esc(second.n)}, and ${bn} outscores ${esc(lastName(second.n))} about ${f0(pr*100)}% of the time.${extra}</div>`;
   }
-  $('#ssOut').innerHTML = (ssExample?`<p style="margin:12px 0 0"><span class="exnote">Example</span> <span class="small muted">Two receivers ranked close together this week. Clear them and add your own.</span></p>`:'') + `<div class="cmp">${cards}</div>${call}${table}`;
+  const head = ssAuto && roster.length && ssAutoSlot ? `<p style="margin:12px 0 0"><span class="exnote">Your closest call</span> <span class="small muted">${ssAutoSlot}: the tightest decision in your lineup this week. Use Compare in your lineup to open another, or add players.</span></p>`
+    : ssExample ? `<p style="margin:12px 0 0"><span class="exnote">Example</span> <span class="small muted">Two receivers ranked close together this week. Import your team to see your own decisions here.</span></p>`
+    : roster.length ? `<p style="margin:12px 0 0"><button class="btn alt sm" id="ssBack">Show my closest call</button></p>` : '';
+  $('#ssOut').innerHTML = head + `<div class="cmp">${cards}</div>${call}${table}`;
 }
-function addSS(id){ if(!id||ss.includes(id)) return; if(ssExample){ss=[];ssExample=false;} if(ss.length>=4) ss.shift(); ss.push(id); store.set('ss',ss); renderSS(); }
+function addSS(id){ if(!id||ss.includes(id)) return; if(ssExample){ss=[];ssExample=false;} setAuto(false); if(ss.length>=4) ss.shift(); ss.push(id); store.set('ss',ss); renderSS(); }
+function setAuto(v){ ssAuto = v; store.set('ssAuto', v); }
 
-/* ---------- my team + lineup ---------- */
+/* ---------- my team + lineup (consensus projections; Sleeper lineup check) ---------- */
+const NOPLAY = ['O','D','IR','SUSP'];
+const lockedSet = () => new Set([...(league&&league.taxi||[]), ...(league&&league.reserve||[])]);
+function cons(p){ const L = lenses(p); return L.consensus ? L.consensus.v : 0; }
+function startable(p, locked){ return p.opp && !NOPLAY.includes(p.tag) && !locked.has(p.id); }
+const SLOT_RULES = [['QB',['QB']],['RB',['RB']],['WR',['WR']],['TE',['TE']],['FLEX',['RB','WR','TE']],['SFLX',['QB','RB','WR','TE']],['K',['K']],['DST',['DST']]];
+function buildLineup(){
+  const ps = roster.map(id=>BY[id]).filter(notPick);
+  const locked = lockedSet();
+  const proj = new Map(ps.map(p=>[p.id, startable(p,locked) ? cons(p) : 0]));
+  const pool = ps.filter(p=>startable(p,locked)).sort((a,b)=>proj.get(b.id)-proj.get(a.id));
+  const used = new Set(), rows = [];
+  const count = {QB:S.QB, RB:S.RB, WR:S.WR, TE:S.TE, FLEX:S.FLEX, SFLX:S.SFLEX, K:S.K, DST:S.DST};
+  SLOT_RULES.forEach(([lbl, ok]) => { for(let i=0;i<(count[lbl]||0);i++){
+    const p = pool.find(x=>!used.has(x.id) && ok.includes(x.p)); if(p) used.add(p.id); rows.push({lbl, ok, p}); } });
+  // best bench alternative for every slot, once the lineup is set
+  rows.forEach(r => { r.alt = pool.find(x=>!used.has(x.id) && r.ok.includes(x.p)) || null;
+    r.margin = r.p && r.alt ? proj.get(r.p.id) - proj.get(r.alt.id) : null; });
+  const total = rows.reduce((a,r)=>a+(r.p?proj.get(r.p.id):0),0);
+  return {ps, rows, used, proj, locked, total, bench: ps.filter(p=>!used.has(p.id))};
+}
+function closestCall(){
+  if(!roster.length) return null;
+  const L = buildLineup(); const r = L.rows.filter(r=>r.p && r.alt).sort((a,b)=>a.margin-b.margin)[0];
+  return r ? {ids:[r.p.id, r.alt.id], slot:r.lbl, margin:r.margin} : null;
+}
 function renderMine(){
   renderLeagueBar(); renderMyPicks();
   const ps = roster.map(id=>BY[id]).filter(Boolean).sort((a,b)=>POS.indexOf(a.p)-POS.indexOf(b.p)||b.wk-a.wk);
   $('#myList').innerHTML = ps.length ? ps.map(p=>`<li style="display:flex;align-items:center;gap:8px">${posTag(p)}<span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(p.n)} <span class="meta">${esc(p.t)}</span>${injTag(p)}${slotTag(p.id)}</span><span class="num small">${p.opp?f1(p.wk):'BYE'}</span><button class="x" data-star="${esc(p.id)}" aria-label="Remove ${esc(p.n)}">✕</button></li>`).join('')
-    : `<li class="empty">No players yet. Add your roster here, or star players in Rankings.</li>`;
-  // lineup optimizer
-  if(!ps.length){ $('#lineup').innerHTML = `<div class="empty">Your best lineup appears here once you add players.</div>`; return; }
-  const locked = new Set([...(league&&league.taxi||[]), ...(league&&league.reserve||[])]);
-  const pool = ps.filter(p=>!locked.has(p.id)).sort((a,b)=>b.wk-a.wk), used = new Set(), slots = [];
-  const take = (lbl, ok) => { const p = pool.find(x=>!used.has(x.id) && ok(x)); if(p) used.add(p.id); slots.push([lbl,p]); };
-  for(const x of ['QB','RB','WR','TE']) for(let i=0;i<S[x];i++) take(x, p=>p.p===x);
-  for(let i=0;i<S.FLEX;i++) take('FLEX', p=>['RB','WR','TE'].includes(p.p));
-  for(let i=0;i<S.SFLEX;i++) take('SFLX', p=>['QB','RB','WR','TE'].includes(p.p));
-  for(let i=0;i<S.K;i++) take('K', p=>p.p==='K');
-  for(let i=0;i<S.DST;i++) take('DST', p=>p.p==='DST');
-  const total = slots.reduce((a,[,p])=>a+(p?p.wk:0),0);
-  const bench = pool.filter(p=>!used.has(p.id));
-  $('#lineup').innerHTML = `<div class="slots">${slots.map(([l,p])=>`<div class="slot"><span class="lbl">${l}</span><span class="who">${p?`${esc(p.n)} <span class="meta">${p.opp?(p.home?'vs ':'@ ')+esc(p.opp):'BYE'}</span>${injTag(p)}`:'<span class="muted">Empty: check the waiver wire</span>'}</span><span class="num">${p?f1(p.wk):''}</span></div>`).join('')}</div>
-    <div class="total"><span>Projected total</span><span class="num">${f1(total)}</span></div>
-    ${bench.length?`<p class="small muted" style="margin:10px 0 0">Bench: ${bench.map(p=>`${esc(p.n)} (${p.opp?f1(p.wk):'BYE'})`).join(', ')}</p>`:''}
-    ${locked.size?`<p class="small muted" style="margin:6px 0 0">Can't start this week: ${ps.filter(p=>locked.has(p.id)).map(p=>`${esc(p.n)} (${(league.taxi||[]).includes(p.id)?'taxi':'IR slot'})`).join(', ')}</p>`:''}`;
+    : `<li class="empty">No players yet. Import your team from Sleeper, add players here, or star them in Rankings.</li>`;
+  const has = m => m && Object.keys(m).length;
+  $('#lineupStatus').textContent = OUT.status==='loading' ? 'Loading Sleeper and ESPN projections…' : (has(OUT.sleeper)||has(OUT.espn)) ? `Consensus of Butler FF${has(OUT.sleeper)?', Sleeper':''}${has(OUT.espn)?', ESPN':''}` : 'Butler FF projections only';
+  if(!ps.length){ $('#lineup').innerHTML = `<div class="empty">Import your team from Sleeper (My team, below) and your best lineup shows up here, checked against the lineup you have set in Sleeper.<div style="margin-top:10px"><button class="btn" id="openSleeper3">Import from Sleeper</button></div></div>`; return; }
+  const L = buildLineup();
+  // what you have set in Sleeper right now
+  const sl = league && Array.isArray(league.starters) && league.starters.length ? league.starters : null;
+  const slIds = sl ? new Set(sl.map(x=>x.id).filter(Boolean)) : null;
+  const recIds = new Set(L.rows.filter(r=>r.p).map(r=>r.p.id));
+  const fmt = (p) => `${p.opp?(p.home?'vs ':'@ ')+esc(p.opp):'bye'}`;
+  const rows = L.rows.map(r => {
+    if(!r.p) return `<tr><td class="slotc">${r.lbl}</td><td colspan="4"><span class="muted">Nobody available: check the waiver wire</span></td></tr>`;
+    const status = !slIds ? '' : slIds.has(r.p.id) ? '<span class="okc">Set in Sleeper</span>' : '<span class="chg">Start in Sleeper</span>';
+    const call = r.margin==null ? '<span class="muted">No bench option</span>' : r.margin < 2 ? `<span class="call-close">Close call</span> <span class="small muted">by ${f1(r.margin)}</span>` : `<span class="call-clear">Clear</span> <span class="small muted">by ${f1(r.margin)}</span>`;
+    return `<tr>
+      <td class="slotc">${r.lbl}</td>
+      <td><div class="pn">${esc(r.p.n)} ${injTag(r.p)}${status}</div><div class="sub">${r.p.p} · ${esc(r.p.t)} ${fmt(r.p)}</div></td>
+      <td class="r num proj">${f1(L.proj.get(r.p.id))}</td>
+      <td class="hide-sm">${r.alt?`<div>${esc(r.alt.n)} ${injTag(r.alt)}</div><div class="sub">${f1(L.proj.get(r.alt.id))} projected · ${fmt(r.alt)}</div>`:'<span class="muted">–</span>'}</td>
+      <td>${call}${r.alt?`<div style="margin-top:4px"><button class="btn alt sm" data-cmp="${esc(r.p.id)},${esc(r.alt.id)}">Compare</button></div>`:''}</td></tr>`;
+  }).join('');
+  let summary = `<div><span class="small muted">Projected total</span><br><b>${f1(L.total)}</b></div>`;
+  let changes = '';
+  if(sl){
+    const slTotal = sl.reduce((a,x)=>a+(x.id && BY[x.id] ? L.proj.get(x.id)||0 : 0), 0);
+    const toStart = L.rows.filter(r=>r.p && !slIds.has(r.p.id)).map(r=>r.p);
+    const toBench = sl.filter(x=>x.id && !recIds.has(x.id)).map(x=>BY[x.id]).filter(Boolean);
+    const empty = sl.filter(x=>!x.raw || x.raw==='0').length;
+    const unknown = sl.filter(x=>x.raw && x.raw!=='0' && !x.id).length;
+    summary += `<div><span class="small muted">Your Sleeper lineup</span><br><b>${f1(slTotal)}</b></div>`;
+    const bad = sl.map(x=>x.id && BY[x.id]).filter(p=>p && (!p.opp || NOPLAY.includes(p.tag)));
+    if(toStart.length || toBench.length || empty){
+      changes = `<div class="callout" style="margin-top:12px"><b>Make ${toStart.length||empty} change${(toStart.length||empty)===1?'':'s'} in Sleeper</b> for about <span class="num">${f1(Math.max(0,L.total-slTotal))}</span> more projected points.
+        ${toStart.length?` Start ${toStart.map(p=>esc(p.n)).join(', ')}.`:''}${toBench.length?` Bench ${toBench.map(p=>`${esc(p.n)}${!p.opp?' (bye)':NOPLAY.includes(p.tag)?' ('+p.tag+')':''}`).join(', ')}.`:''}${empty?` ${empty} lineup spot${empty>1?'s are':' is'} empty in Sleeper.`:''}
+        ${bad.length?`<br><span class="small">Heads up: ${bad.map(p=>esc(p.n)).join(', ')} ${bad.length>1?'are':'is'} in your Sleeper lineup but ${bad.length>1?"aren't":"isn't"} playing.</span>`:''}</div>`;
+    } else {
+      changes = `<div class="callout" style="margin-top:12px;border-left-color:var(--good)"><b>Your Sleeper lineup is already the best one.</b>${unknown?` ${unknown} starter${unknown>1?'s have':' has'} no projection here.`:''}</div>`;
+    }
+  } else if(league){
+    changes = `<p class="note" style="margin-top:10px">Re-import from Sleeper to compare with the lineup you have set there.</p>`;
+  } else {
+    changes = `<p class="note" style="margin-top:10px">Import your team from Sleeper to check this against the lineup you have set there.</p>`;
+  }
+  const out = L.ps.filter(p=>!L.used.has(p.id)).sort((a,b)=>(L.proj.get(b.id)||-1)-(L.proj.get(a.id)||-1));
+  $('#lineup').innerHTML = `<div class="frame lineup"><table><thead><tr><th></th><th>Start</th><th class="r">Proj</th><th class="hide-sm">Next best on your bench</th><th>Call</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <div class="summary">${summary}</div>${changes}
+    ${out.length?`<p class="small muted" style="margin:10px 0 0">Bench: ${out.map(p=>`${esc(p.n)} (${L.locked.has(p.id)?((league.taxi||[]).includes(p.id)?'taxi':'IR slot'):!p.opp?'bye':NOPLAY.includes(p.tag)?p.tag:f1(L.proj.get(p.id))})`).join(', ')}</p>`:''}`;
 }
 function slotTag(id){ if(!league) return ''; if((league.taxi||[]).includes(id)) return '<span class="tag BYE">Taxi</span>'; if((league.reserve||[]).includes(id)) return '<span class="tag BYE">IR slot</span>'; return ''; }
 function renderMyPicks(){
@@ -1168,10 +1242,12 @@ async function slImportLeague(lid, quiet){
     const team = (users||[]).find(x=>x.user_id===uid);
     const ids = mineR.players||[], mine = ids.map(slToId).filter(Boolean), unmatched = ids.length - mine.length;
     roster = Array.from(new Set(mine)); store.set('roster', roster);
+    if(!quiet) setAuto(true);
     league = {id: lid, name: lg && lg.name || 'Sleeper league', team: team && team.metadata && team.metadata.team_name || (SLD.user && SLD.user.display_name) || '',
               taken: Array.from(new Set((rosters||[]).flatMap(r=>r.players||[]).map(slToId).filter(Boolean))), at: Date.now(), direct: true,
               myRid: mineR.roster_id, teams: teamsFrom(rosters, users),
-              taxi: (mineR.taxi||[]).map(slToId).filter(Boolean), reserve: (mineR.reserve||[]).map(slToId).filter(Boolean)};
+              taxi: (mineR.taxi||[]).map(slToId).filter(Boolean), reserve: (mineR.reserve||[]).map(slToId).filter(Boolean),
+              starters: sleeperStarters(mineR.starters, lg && lg.roster_positions)};
     const lset = (lg && lg.settings) || {};
     const sc = mapScoring(lg && lg.scoring_settings, lg && lg.roster_positions, lg && lg.total_rosters, lset);
     league.picks = sc.ltype==='redraft' ? [] : makePicks((rosters||[]).map(r=>r.roster_id), traded, sc.rrounds || S.rrounds || 4);
@@ -1224,6 +1300,12 @@ function makePicks(rids, traded, rounds){
   (traded||[]).forEach(t => { const k = out.find(x=>x.season===+t.season && x.round===+t.round && x.orig===+t.roster_id); if(k) k.owner = +t.owner_id; });
   return out;
 }
+/* The lineup set in Sleeper: starters line up with the league's non-bench roster slots. */
+function sleeperStarters(starters, positions){
+  if(!Array.isArray(starters)) return [];
+  const slots = (positions||[]).filter(x=>!['BN','IR','TAXI'].includes(x));
+  return starters.map((sid,i)=>({slot: slots[i] || '', raw: String(sid||'0'), id: sid && sid!=='0' ? slToId(sid) : null}));
+}
 function teamsFrom(rosters, users){
   const T = {};
   (rosters||[]).forEach(r => { const u = (users||[]).find(x=>x.user_id===r.owner_id), st = r.settings||{};
@@ -1242,13 +1324,13 @@ function slReadPaste(){
   let r;
   try{ r = extractJSON($('#slPaste').value); }catch(e){ SL.msg="That paste isn't readable. Copy the whole Sleeper page (select all, then copy) and paste again."; SL.msgKind='err'; slRender(); return; }
   if(Array.isArray(r) && r.length && r[0] && typeof r[0]==='object' && 'players' in r[0]){
-    SL.rosters = r.map(x=>{ const ids = x.players||[]; const ps = ids.map(slToId).filter(Boolean).map(id=>BY[id]).sort((a,b)=>(b.dyn||0)-(a.dyn||0)); return {ids, top: ps.slice(0,3), rid: x.roster_id, taxi: x.taxi||[], reserve: x.reserve||[]}; });
+    SL.rosters = r.map(x=>{ const ids = x.players||[]; const ps = ids.map(slToId).filter(Boolean).map(id=>BY[id]).sort((a,b)=>(b.dyn||0)-(a.dyn||0)); return {ids, top: ps.slice(0,3), rid: x.roster_id, taxi: x.taxi||[], reserve: x.reserve||[], starters: x.starters||null}; });
     SL.raw = r; SL.all = r.flatMap(x=>x.players||[]); SL.msg='';
   } else if(Array.isArray(r) && (r.length===0 || (r[0] && typeof r[0]==='object' && 'season' in r[0] && 'round' in r[0]))){
     SL.traded = r; SL.msg = r.length ? '' : 'No traded picks in this league.'; SL.msgKind='';
     if(league && !SL.rosters && league.picks && league.picks.length){ league.picks = makePicks(Object.keys(league.teams||{}).map(Number), r, S.rrounds||4); store.set('league',league); renderAll(); SL.msg='Updated pick ownership from Sleeper.'; SL.msgKind='ok'; }
   } else if(r && !Array.isArray(r) && (r.scoring_settings || r.roster_positions)){
-    SL.settings = mapScoring(r.scoring_settings, r.roster_positions, r.total_rosters, r.settings); SL.lgName = r.name||'';
+    SL.settings = mapScoring(r.scoring_settings, r.roster_positions, r.total_rosters, r.settings); SL.lgName = r.name||''; SL.rp = r.roster_positions||null;
     SL.msg = SL.rosters ? '' : 'Settings saved for the import. Now paste the rosters page.'; SL.msgKind='';
     if(league && !SL.rosters){ Object.assign(S, SL.settings); store.set('settings',S); league.name = SL.lgName||league.name; store.set('league',league); wwN=null; renderAll(); SL.msg='Updated your scoring and lineup settings from Sleeper.'; SL.msgKind='ok'; }
   } else { SL.msg = "That's a Sleeper page, but not one of the three above. Use the links above."; SL.msgKind='err'; }
@@ -1258,9 +1340,10 @@ function slPickTeam(i){
   const t = SL.rosters[i];
   const mine = t.ids.map(slToId).filter(Boolean), taken = SL.all.map(slToId).filter(Boolean);
   const unmatched = t.ids.length - mine.length;
-  roster = Array.from(new Set(mine)); store.set('roster', roster);
+  roster = Array.from(new Set(mine)); store.set('roster', roster); setAuto(true);
   league = {id: store.get('slLeagueId',''), name: SL.lgName || 'Sleeper league', team: t.top[0] ? `${t.top[0].n}'s team` : '', taken: Array.from(new Set(taken)), at: Date.now(),
-            myRid: t.rid, teams: teamsFrom(SL.raw, []), taxi: t.taxi.map(slToId).filter(Boolean), reserve: t.reserve.map(slToId).filter(Boolean)};
+            myRid: t.rid, teams: teamsFrom(SL.raw, []), taxi: t.taxi.map(slToId).filter(Boolean), reserve: t.reserve.map(slToId).filter(Boolean),
+            starters: sleeperStarters(t.starters, SL.rp)};
   if(SL.settings){ Object.assign(S, SL.settings); store.set('settings', S); wwN=null; }
   league.picks = S.ltype==='redraft' ? [] : makePicks(SL.raw.map(x=>x.roster_id), SL.traded||[], S.rrounds||4);
   store.set('league', league);
@@ -1318,7 +1401,8 @@ document.addEventListener('click', e => {
   if(t.dataset.wwpos){ WW.pos=t.dataset.wwpos; document.querySelectorAll('[data-wwpos]').forEach(b=>b.setAttribute('aria-pressed',b===t)); renderWaivers(); return; }
   if(t.hasAttribute('data-close')){ $('#scrim').hidden = true; return; }
   if(t.dataset.compare){ $('#scrim').hidden = true; addSS(t.dataset.compare); location.hash='startsit'; show('startsit'); return; }
-  if(t.dataset.ssrm){ ss = ss.filter(x=>x!==t.dataset.ssrm); ssExample=false; store.set('ss',ss); renderSS(); return; }
+  if(t.dataset.ssrm){ ss = ss.filter(x=>x!==t.dataset.ssrm); ssExample=false; setAuto(false); store.set('ss',ss); renderSS(); return; }
+  if(t.dataset.cmp){ ss = t.dataset.cmp.split(','); ssExample=false; setAuto(false); store.set('ss',ss); renderSS(); $('#comparePanel').scrollIntoView({behavior: matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth', block:'start'}); return; }
   if(t.dataset.trm){ const [side,id] = t.dataset.trm.split(/:(.+)/); if(tradeExample){tradeExample=false;} trade[side] = trade[side].filter(x=>x!==id); store.set('trade',trade); renderTrade(); return; }
   if(t.dataset.add){ const inp = t.dataset.add==='give'?$('#tgIn'):$('#ttIn'); addTrade(t.dataset.add, BYLABEL[inp.value]); inp.value=''; return; }
   if(t.dataset.league){ slImportLeague(t.dataset.league); return; }
@@ -1329,7 +1413,9 @@ document.addEventListener('click', e => {
   if(t.dataset.dt){ dtView=t.dataset.dt; document.querySelectorAll('[data-dt]').forEach(b=>b.setAttribute('aria-pressed',b===t)); $('#dMock').hidden = dtView!=='mock'; $('#dCheat').hidden = dtView!=='cheat'; renderView(); return; }
   switch(t.id){
     case 'ssAdd': addSS(BYLABEL[$('#ssInput').value]); $('#ssInput').value=''; break;
-    case 'ssClear': ss=[]; ssExample=false; store.set('ss',ss); renderSS(); break;
+    case 'ssClear': ss=[]; ssExample=false; setAuto(false); store.set('ss',ss); renderSS(); break;
+    case 'ssBack': setAuto(true); renderSS(); break;
+    case 'openSleeper3': openSleeper(); break;
     case 'myAdd': { const id = BYLABEL[$('#myInput').value]; if(id && !isMine(id)) toggleMine(id); $('#myInput').value=''; break; }
     case 'openSleeper': openSleeper(); break;
     case 'closeSleeper': $('#slScrim').hidden=true; break;
