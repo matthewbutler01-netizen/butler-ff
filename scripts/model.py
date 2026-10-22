@@ -148,6 +148,68 @@ snaps["key"] = snaps.player.str.lower().str.replace(r"[^a-z]", "", regex=True) +
 snap_map = snaps.groupby("key").apply(lambda d: {int(r.week): round(float(r.offense_pct) * 100) for r in d.itertuples()},
                                        include_groups=False).to_dict()
 
+# ---------- start/sit lenses: expected points, history vs opponent, home/away splits ----------
+# Expected fantasy points (ffverse/ffopportunity): what each player's opportunities were worth on average, PPR.
+XP = {}
+try:
+    ep = pd.read_csv(f"{DATA}/ep_weekly.csv", low_memory=False)
+    ep = ep[ep.season == SEASON]
+    for r in ep.itertuples():
+        if pd.notna(r.total_fantasy_points_exp):
+            XP.setdefault(r.player_id, {})[int(r.week)] = [round(float(r.total_fantasy_points_exp), 1),
+                                                           round(float(r.total_fantasy_points or 0), 1)]
+except FileNotFoundError:
+    pass
+
+COMP = ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds",
+        "receptions", "receiving_yards", "receiving_tds"]
+def _games(path, season):
+    try:
+        f = pd.read_csv(path, low_memory=False)
+    except FileNotFoundError:
+        return None
+    f = f[(f.season == season) & f.position.isin(SKILL)].copy()
+    for c in COMP + ["rushing_fumbles_lost", "receiving_fumbles_lost", "sack_fumbles_lost",
+                     "passing_2pt_conversions", "rushing_2pt_conversions", "receiving_2pt_conversions"]:
+        f[c] = num(f[c])
+    f["fum"] = f.rushing_fumbles_lost + f.receiving_fumbles_lost + f.sack_fumbles_lost
+    f["two"] = f.passing_2pt_conversions + f.rushing_2pt_conversions + f.receiving_2pt_conversions
+    return f[["player_id", "season", "week", "season_type", "game_id", "team", "opponent_team"] + COMP + ["fum", "two"]]
+
+_all_g = pd.read_csv(f"{DATA}/games.csv")
+HOME = dict(zip(_all_g.game_id, _all_g.home_team))
+frames = [_games(f"{DATA}/week_prev2.csv", SEASON - 2), _games(f"{DATA}/week_prev.csv", SEASON - 1),
+          w[w.position.isin(SKILL)][["player_id", "season", "week", "season_type", "game_id", "team", "opponent_team"] + COMP + ["fum", "two"]]]
+GAMES = pd.concat([f for f in frames if f is not None], ignore_index=True)
+GAMES["home"] = [HOME.get(gid) == t for gid, t in zip(GAMES.game_id, GAMES.team)]
+GBY = {pid: d for pid, d in GAMES.groupby("player_id")}
+_line = lambda r: [round(float(getattr(r, c)), 1) for c in COMP + ["fum", "two"]]
+
+def vs_opp(pid, opp):
+    """Every game against this week's opponent since two seasons ago: [season, week (+100 = playoffs), team, ...stat line]."""
+    d = GBY.get(pid)
+    if d is None or not opp:
+        return []
+    d = d[d.opponent_team == opp].sort_values(["season", "week"])
+    return [[int(r.season), int(r.week) + (100 if r.season_type == "POST" else 0), r.team] + _line(r) for r in d.itertuples()]
+
+def splits(pid):
+    """Home and away per-game stat lines, this season and last: {"cur": {"h": [...10 stats, games], "a": ...}, "prev": ...}."""
+    d = GBY.get(pid)
+    out = {}
+    if d is None:
+        return out
+    for key, season in (("cur", SEASON), ("prev", SEASON - 1)):
+        ds = d[(d.season == season) & (d.season_type == "REG")]
+        part = {}
+        for side, m in (("h", ds.home), ("a", ~ds.home)):
+            x = ds[m]
+            if len(x):
+                part[side] = [round(float(x[c].mean()), 2) for c in COMP + ["fum", "two"]] + [int(len(x))]
+        if part:
+            out[key] = part
+    return out
+
 # ---------- skill player projections ----------
 def wavg(d, c):
     return float((d[c] * d.wt).sum() / d.wt.sum())
@@ -281,6 +343,7 @@ for pid, d in sk.groupby("player_id"):
         h=hist, sn=sn, tr=round(trend, 1),
         ts=round(float(np.nanmean(ts[-2:])), 3) if len(ts) and pos != "QB" else None,
         **bio(pid), pv=prev_line(pid),
+        xp=XP.get(pid, {}), vs=vs_opp(pid, w_opp), spl=splits(pid),
     ))
 
 # ---------- dynasty-only players: no games this season but still part of the long-term picture ----------
@@ -317,7 +380,8 @@ for pid, st in pstat.items():
         inj=str(rep_.get("report_primary_injury") or "") if tag else "", dc="", dyn=1,
         wk=dict(opp=opp[0], home=opp[1], m=1.0, c=dict(zero)),
         ros=dict(c=dict(zero), g=sum(1 for wk in range(CUR_WEEK, 19) if (team, wk) in sched), sos=1.0),
-        pg=dict(zero), h={}, sn={}, tr=0.0, ts=None, **b, pv=prev_line(pid)))
+        pg=dict(zero), h={}, sn={}, tr=0.0, ts=None, **b, pv=prev_line(pid),
+        xp={}, vs=vs_opp(pid, opp[0]), spl=splits(pid)))
 out_players += extra
 print("dynasty-only players", len(extra))
 
@@ -407,7 +471,7 @@ meta = dict(season=SEASON, week=CUR_WEEK, weekDates=week_dates, lastWeek=LAST_WE
             defF={t: round(def_f[t], 3) for t in teams})
 
 # Sleeper player id -> gsis id (dynastyprocess crosswalk), so a Sleeper roster import matches our players.
-sl = {}
+sl, es = {}, {}
 import os
 xw = os.path.join(DATA, "db_playerids.csv")
 if os.path.exists(xw):
@@ -415,7 +479,10 @@ if os.path.exists(xw):
     ours = {p["id"] for p in out_players + kickers}
     x = x[x.gsis_id.isin(ours) & x.sleeper_id.notna()]
     sl = {str(int(float(s))): gid for s, gid in zip(x.sleeper_id, x.gsis_id)}
+    xe = pd.read_csv(xw, low_memory=False)
+    xe = xe[xe.gsis_id.isin(ours) & xe.espn_id.notna()]
+    es = {str(int(float(e))): gid for e, gid in zip(xe.espn_id, xe.gsis_id)}
 
-json.dump(dict(meta=meta, players=out_players, k=kickers, dst=defs, sched=sched_out, dvp=dvp_out, sl=sl),
+json.dump(dict(meta=meta, players=out_players, k=kickers, dst=defs, sched=sched_out, dvp=dvp_out, sl=sl, es=es),
           open(OUT, "w"), separators=(",", ":"), default=lambda o: o.item() if hasattr(o, "item") else str(o))
 print("players", len(out_players), "K", len(kickers), "DST", len(defs))

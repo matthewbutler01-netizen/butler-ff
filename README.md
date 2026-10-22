@@ -3,7 +3,7 @@
 Fantasy football tools for NFL season-long leagues, with no betting data anywhere: no odds, lines, props or sportsbook links.
 
 - **Rankings**: this week and rest of season, by position or overall, with tiers, matchup grades and floor-to-ceiling ranges
-- **Start / Sit**: compare up to four players, plus an optimal lineup for your roster
+- **Start / Sit**: compare up to four players across several lenses: projections from Butler FF, Sleeper and ESPN (averaged into a consensus), recent form, usage-based expected points, matchup, every game against this week's opponent since two seasons ago, home/road splits, and last season. Plus an optimal lineup for your roster
 - **Trade Analyzer**: rest-of-season value over a replacement-level starter in your league
 - **Waiver Wire**: pickups ranked by value and rising usage; uses your real league rosters after a Sleeper import
 - **Draft Room**: mock draft against bots and a tiered cheat sheet
@@ -32,9 +32,12 @@ The week projected is the one after the last week whose games are all final. Bef
 
 | Source | Used for |
 | --- | --- |
-| [nflverse](https://github.com/nflverse/nflverse-data) | weekly player stats (this season and last), schedule, injury reports, snap counts, depth charts, player status, age and draft capital |
+| [nflverse](https://github.com/nflverse/nflverse-data) | weekly player stats (this season and the two before), schedule, injury reports, snap counts, depth charts, player status, age and draft capital |
 | [DynastyProcess](https://github.com/dynastyprocess/data) | Sleeper ID ↔ NFL ID crosswalk |
 | [Sleeper API](https://docs.sleeper.com/) | league import and trending adds, called from your browser (free for non-commercial use) |
+| Sleeper projections | weekly projections in Start / Sit, loaded in your browser from Sleeper's public projections feed (not part of the documented API, so it can change) |
+| ESPN | weekly projections in Start / Sit, loaded in your browser from ESPN's public fantasy feed (unofficial; can change) |
+| [ffopportunity](https://github.com/ffverse/ffopportunity) | expected fantasy points from each player's usage |
 
 The schedule file includes betting columns; `scripts/model.py` drops them before anything else runs.
 

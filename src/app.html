@@ -199,6 +199,13 @@ textarea.paste{width:100%;min-height:90px;border:1px solid var(--line);backgroun
 .toast .btn{border-color:var(--flag);background:var(--flag);color:var(--flag-ink)}
 .picks{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
 .picks span{font-size:11px;font-weight:600;border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+.lens th[scope=row]{white-space:normal;min-width:150px;max-width:200px;text-transform:none;letter-spacing:0;font-size:12.5px;color:var(--ink);font-weight:600}
+.lens td{white-space:normal;min-width:130px;vertical-align:top}
+.lens .lv{font-size:14px;font-weight:600}
+.lens .ln{font-size:11px;color:var(--muted);font-weight:400;margin-top:2px;line-height:1.35}
+.lens td.lead{background:var(--good-bg)}
+.lens td.lead .lv{color:var(--good)}
+.lens tr.cons th, .lens tr.cons td{border-bottom:2px solid var(--line)}
 footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--muted);font-size:12px}
 .empty{border:1px dashed var(--line);border-radius:8px;padding:18px;text-align:center;color:var(--muted)}
 @media (max-width:640px){
@@ -255,7 +262,7 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
   <section class="view" id="v-startsit" hidden>
     <div class="head"><div>
       <h1>Start / Sit</h1>
-      <p class="lede">Compare up to four players for <span class="wkN">this week</span>. The verdict weighs projection, floor and ceiling, and how often each outscores the other given his week-to-week volatility.</p>
+      <p class="lede">Compare up to four players for <span class="wkN">this week</span>. Each is judged several ways: projections from Butler FF, Sleeper and ESPN, recent form, usage, matchup, past games against this opponent, home and road splits, and last season.</p>
     </div></div>
     <div class="panel">
       <div class="adder">
@@ -716,37 +723,172 @@ function initSS(){ if(ss) return; // example: two receivers ranked next to each 
   const wrs = ALL.filter(p=>p.p==='WR' && p.opp && !p.tag).sort((a,b)=>b.wk-a.wk);
   ss = wrs.length>24 ? [wrs[22].id, wrs[23].id] : []; ssExample = true; }
 const phi = z => { const t=1/(1+0.2316419*Math.abs(z)); const d=0.3989423*Math.exp(-z*z/2); const pr=d*t*(0.3193815+t*(-0.3565638+t*(1.781478+t*(-1.821256+t*1.330274)))); return z>0?1-pr:pr; };
+/* ---------- outside projections: loaded in the viewer's browser straight from Sleeper and ESPN ---------- */
+let OUT = {status:'idle', sleeper:null, espn:null, company:'', at:0};
+async function getJSON(url, headers){
+  const ctl = ('AbortController' in window) ? new AbortController() : null;
+  const to = setTimeout(()=>ctl && ctl.abort(), 10000);
+  try{ const r = await fetch(url, {headers: headers||{}, signal: ctl && ctl.signal}); if(!r.ok) throw new Error('http '+r.status); return await r.json(); }
+  finally{ clearTimeout(to); }
+}
+async function loadSleeperProj(){
+  const pos = ['QB','RB','WR','TE','K','DEF'].map(x=>'position[]='+x).join('&');
+  const j = await getJSON(`https://api.sleeper.app/projections/nfl/${M.season}/${M.week}?season_type=regular&${pos}`);
+  const m = {};
+  (j||[]).forEach(x => { const id = slToId(x.player_id), st = x.stats; if(!id || !st) return;
+    if(x.company && !OUT.company) OUT.company = x.company;
+    const pp = BY[id] && BY[id].p;
+    if(pp==='K' || pp==='DST'){ if(st.pts_ppr!=null) m[id] = {pts: +st.pts_ppr}; return; }
+    m[id] = {pass_yd:st.pass_yd||0, pass_td:st.pass_td||0, int:st.pass_int||0, rush_yd:st.rush_yd||0, rush_td:st.rush_td||0,
+             rec:st.rec||0, rec_yd:st.rec_yd||0, rec_td:st.rec_td||0, fum:st.fum_lost||0, two:(st.pass_2pt||0)+(st.rush_2pt||0)+(st.rec_2pt||0)}; });
+  OUT.sleeper = m;
+}
+async function loadEspnProj(){
+  // ESPN's public fantasy feed; PPR league defaults. Stat ids verified against ESPN's own point totals.
+  const filter = {players:{limit:800, filterSlotIds:{value:[0,2,4,6]}, sortPercOwned:{sortAsc:false,sortPriority:1}, filterStatsForCurrentSeasonScoringPeriodId:{value:[M.week]}}};
+  const j = await getJSON(`https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${M.season}/segments/0/leaguedefaults/3?scoringPeriodId=${M.week}&view=kona_player_info`, {'X-Fantasy-Filter': JSON.stringify(filter)});
+  const m = {};
+  ((j && j.players) || []).forEach(x => { const id = D.es[String(x.player && x.player.id)]; if(!id) return;
+    const st = ((x.player.stats)||[]).find(z => z.statSourceId===1 && z.scoringPeriodId===M.week); if(!st) return;
+    const g = k => +(st.stats[k]||0);
+    m[id] = {pass_yd:g(3), pass_td:g(4), int:g(20), rush_yd:g(24), rush_td:g(25), rec:g(53), rec_yd:g(42), rec_td:g(43), fum:g(72), two:g(19)+g(26)+g(44)}; });
+  OUT.espn = m;
+}
+async function loadOutside(force){
+  if(OUT.status==='loading' || (!force && OUT.status==='done' && Date.now()-OUT.at < 15*60000)) return;
+  OUT.status = 'loading'; if(view==='startsit') renderSS();
+  const r = await Promise.allSettled([loadSleeperProj(), loadEspnProj()]);
+  if(r[0].status==='rejected') OUT.sleeper = null;
+  if(r[1].status==='rejected') OUT.espn = null;
+  OUT.status = 'done'; OUT.at = Date.now();
+  if(view==='startsit') renderSS();
+}
+const outPts = (c, pos) => c==null ? null : c.pts!=null ? c.pts : compPts(c, pos) + (c.two||0)*2;
+const linePts = (a, pos) => a[0]*0.04 + a[1]*S.ptd + a[2]*S.int + a[3]*0.1 + a[4]*6 + a[5]*(S.rec+(pos==='TE'?S.tep:0)) + a[6]*0.1 + a[7]*6 + a[8]*-2 + (a[9]||0)*2;
+const mean = a => a.length ? a.reduce((x,y)=>x+y,0)/a.length : null;
+const lastName = n => n.split(' ').filter(w=>!/^(Jr\.?|Sr\.?|II|III|IV|V)$/.test(w)).slice(-1)[0];
+
+/* Each lens returns {v: number used to compare (higher = better), show: main text, note: detail} or null. */
+function lenses(p){
+  const s = p.src || {}, skill = p.kind==='s', L = {};
+  const bye = !p.opp;
+  L.butler = bye ? null : {v:p.wk, show:f1(p.wk), note:`floor ${f1(p.floor)} · ceiling ${f1(p.ceil)}`};
+  const sp = OUT.sleeper ? outPts(OUT.sleeper[p.id], p.p) : null;
+  L.sleeper = bye ? null : sp!=null ? {v:sp, show:f1(sp), note:OUT.company?`via ${OUT.company}`:''} : null;
+  const ep = OUT.espn && skill ? outPts(OUT.espn[p.id], p.p) : null;
+  L.espn = bye ? null : ep!=null ? {v:ep, show:f1(ep), note:''} : null;
+  const projs = [L.butler, L.sleeper, L.espn].filter(Boolean).map(x=>x.v);
+  L.consensus = projs.length ? {v:mean(projs), show:f1(mean(projs)), note:`${projs.length} projection${projs.length>1?'s':''}`, spread: projs.length>1 ? Math.max(...projs)-Math.min(...projs) : 0} : null;
+  const played = p.hist ? p.hist.map((x,i)=>[x,i+1]).filter(x=>x[0]!=null) : [];
+  const l3 = played.slice(-3).map(x=>x[0]);
+  if(l3.length) L.form = {v:mean(l3), show:f1(mean(l3)), note:`last ${l3.length}: ${played.slice(-3).map(x=>f0(x[0])).join(', ')} · season ${f1(p.avg)}`};
+  if(skill && s.xp && Object.keys(s.xp).length){
+    const wks = Object.keys(s.xp);
+    const xpp = mean(wks.map(w=>s.xp[w][0])), actp = mean(wks.map(w=>s.xp[w][1]));
+    const lg = mean(played.filter(x=>s.xp[x[1]]).map(x=>x[0]));            // same games in league scoring
+    const scale = actp>0.5 && lg!=null ? lg/actp : 1;
+    const xv = xpp*scale, diff = xv - (lg!=null?lg:actp*scale);
+    L.usage = {v:xv, show:f1(xv), note: Math.abs(diff)<1 ? 'scoring about what his usage earns' : diff>0 ? `${f1(diff)} a game below what his usage earns: due to bounce back` : `${f1(-diff)} a game above what his usage earns: may cool off`};
+  }
+  if(!bye){
+    const g = grade(p.m), pct = Math.round((p.m-1)*100);
+    L.matchup = {v:p.m, show:`<span class="grade g-${g}">${g}</span>${p.home?'vs':'@'} ${esc(p.opp)}`,
+      note: p.kind==='d' ? `opponent scores ${pct<=0?Math.abs(pct)+'% less':pct+'% more'} than average`
+                         : `${Math.abs(pct)<2?'about average':Math.abs(pct)+'% '+(pct>0?'more':'fewer')} points allowed to ${p.p==='K'?'kickers':p.p+'s'}`};
+  }
+  if(skill && s.vs && s.vs.length && p.opp){
+    const pts = s.vs.map(g=>linePts(g.slice(3), p.p));
+    L.history = {v:mean(pts), show:f1(mean(pts)), note:`${s.vs.length} game${s.vs.length>1?'s':''} vs ${esc(p.opp)} since ${M.season-2}: ${s.vs.map((g,i)=>`${f0(pts[i])}${g[2]!==p.t?' ('+esc(g[2])+')':''}`).join(', ')}`};
+  }
+  if(skill && s.spl && p.opp){
+    const side = p.home ? 'h' : 'a', cur = s.spl.cur && s.spl.cur[side], prev = s.spl.prev && s.spl.prev[side];
+    const parts = [cur && [linePts(cur,p.p), cur[10], 'this season'], prev && [linePts(prev,p.p), prev[10], 'last season']].filter(Boolean);
+    if(parts.length){
+      const g = parts.reduce((a,x)=>a+x[1],0), v = parts.reduce((a,x)=>a+x[0]*x[1],0)/g;
+      L.venue = {v, show:f1(v), note:`${p.home?'home':'road'}: ${parts.map(x=>`${f1(x[0])} in ${x[1]} ${x[2]}`).join(' · ')}`};
+    }
+  }
+  if(skill && s.pv && s.pv[9]){ const v = pvPts(s.pv, p.p); L.lastSeason = {v, show:f1(v), note:`${s.pv[9]} games in ${M.season-1}`}; }
+  return L;
+}
+const LENS_ROWS = [
+  ['consensus','Consensus projection','Average of the projections below'],
+  ['butler','Butler FF','Usage-based projection with matchup and injuries'],
+  ['sleeper','Sleeper','Sleeper\'s weekly projection'],
+  ['espn','ESPN','ESPN\'s weekly projection'],
+  ['form','Recent form','Points a game, last 3 games'],
+  ['usage','Usage','Expected points from targets, carries and field position'],
+  ['matchup','Matchup','Points this defense allows to the position'],
+  ['history','Vs this opponent','Games against this week\'s opponent'],
+  ['venue','Home / road','Points a game at this week\'s venue'],
+  ['lastSeason','Last season','Points a game last season'],
+];
+const VOTERS = ['consensus','form','usage','matchup','history','venue','lastSeason'];
+
 function renderSS(){
   initSS();
+  loadOutside();
   const ps = ss.map(id=>BY[id]).filter(Boolean);
   if(!ps.length){ $('#ssOut').innerHTML = `<div class="empty" style="margin-top:12px">Add two or more players to see who to start.</div>`; return; }
-  const sorted = ps.slice().sort((a,b)=>b.wk-a.wk);
+  const LS = new Map(ps.map(p=>[p, lenses(p)]));
+  const proj = p => LS.get(p).consensus ? LS.get(p).consensus.v : 0;
+  const sorted = ps.slice().sort((a,b)=>proj(b)-proj(a));
   const best = sorted[0];
+  const sdOf = p => Math.max(0.5, proj(p)*p.cv);
+  // lens wins: each lens votes for the player who leads it (ties and single-player rows don't vote)
+  const wins = new Map(ps.map(p=>[p,0])), leader = {};
+  VOTERS.forEach(k => { const have = ps.filter(p=>LS.get(p)[k]); if(have.length<2) return;
+    const top = have.slice().sort((a,b)=>LS.get(b)[k].v-LS.get(a)[k].v);
+    if(LS.get(top[0])[k].v - LS.get(top[1])[k].v < 1e-6) return;
+    leader[k] = top[0]; wins.set(top[0], wins.get(top[0])+1); });
+  const voted = Object.keys(leader).length;
   const cards = ps.map(p => {
-    const win = p===best && ps.length>1;
-    const vs = ps.length>1 ? ps.filter(o=>o!==p).map(o=>`<div class="small"><span class="num">${f0(100*phi((p.wk-o.wk)/Math.sqrt(p.sd**2+o.sd**2)))}%</span> <span class="muted">to outscore ${esc(o.n.split(' ').slice(-1)[0])}</span></div>`).join('') : '';
-    const last3 = p.hist.filter(x=>x!=null).slice(-3); const l3 = last3.length? last3.reduce((a,b)=>a+b,0)/last3.length : 0;
+    const L = LS.get(p), win = p===best && ps.length>1;
+    const vs = ps.length>1 ? ps.filter(o=>o!==p).map(o=>`<div class="small"><span class="num">${f0(100*phi((proj(p)-proj(o))/Math.sqrt(sdOf(p)**2+sdOf(o)**2)))}%</span> <span class="muted">to outscore ${esc(lastName(o.n))}</span></div>`).join('') : '';
+    const src = [['Butler FF',L.butler],['Sleeper',L.sleeper],['ESPN',L.espn]].filter(x=>x[1]).map(x=>`${x[0]} ${x[1].show}`).join(' · ');
     return `<div class="pcard ${win?'win':''}">
       <div style="display:flex;justify-content:space-between;align-items:start;gap:8px"><div style="min-width:0">${posTag(p)}${injTag(p)}<div class="pname" style="margin-top:4px">${esc(p.n)}</div><div class="small muted">${esc(p.t)} · ${oppCell(p)}</div></div><button class="x" data-ssrm="${esc(p.id)}" aria-label="Remove ${esc(p.n)}">✕</button></div>
       <div class="verdict ${win?'start':'sit'}">${ps.length<2?'':win?'Start':'Bench'}</div>
-      <div class="big num">${p.opp?f1(p.wk):'BYE'}</div>
-      ${p.opp?rangeCell(p, Math.max(30, ...ps.map(x=>x.ceil))):''}
-      <dl class="kv"><dt>Floor / ceiling</dt><dd class="num">${f1(p.floor)} / ${f1(p.ceil)}</dd><dt>Last 3 avg</dt><dd class="num">${f1(l3)}</dd>
-      ${p.kind==='s'&&p.src.ts!=null?`<dt>Target share</dt><dd class="num">${f0(p.src.ts*100)}%</dd>`:''}
-      ${p.kind==='s'?`<dt>Usage trend</dt><dd class="num">${p.src.tr>0?'+':''}${f1(p.src.tr)}/g</dd>`:''}</dl>
+      <div class="big num">${p.opp?f1(proj(p)):'BYE'}</div>
+      <div class="small muted">${p.opp?(src||'Butler FF only'):'No game this week'}</div>
+      ${p.opp?rangeCell(Object.assign(Object.create(p),{wk:proj(p),floor:proj(p)*(1-0.9*p.cv),ceil:proj(p)*(1+1.3*p.cv)}), Math.max(30, ...ps.map(x=>proj(x)*(1+1.3*x.cv)))):''}
+      ${ps.length>1&&voted?`<div class="small"><span class="num">${wins.get(p)} of ${voted}</span> <span class="muted">lenses lean this way</span></div>`:''}
       ${vs}</div>`;
   }).join('');
+
+  // lens breakdown table
+  const status = OUT.status==='loading' ? '<span class="muted small">Loading…</span>' : '';
+  const rows = LENS_ROWS.map(([k,label,hint]) => {
+    const cells = ps.map(p => { const x = LS.get(p)[k];
+      if(!x){ const pending = (k==='sleeper'||k==='espn') && OUT.status!=='done'; return `<td>${pending?status||'<span class="muted">–</span>':'<span class="muted">–</span>'}</td>`; }
+      const lead = leader[k]===p;
+      return `<td class="${lead?'lead':''}"><div class="lv num">${x.show}</div>${x.note?`<div class="ln">${x.note}</div>`:''}</td>`; }).join('');
+    return `<tr class="${k==='consensus'?'cons':''}"><th scope="row"><div>${label}</div><div class="ln">${hint}</div></th>${cells}</tr>`;
+  }).join('');
+  const table = `<h3 style="margin-top:18px">Every angle</h3>
+    <div class="frame lens" style="margin-top:8px"><table><thead><tr><th></th>${ps.map(p=>`<th>${esc(p.n)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
+    ${OUT.status==='done' && (!OUT.sleeper || !OUT.espn) ? `<p class="note" style="margin-top:6px">${[!OUT.sleeper&&'Sleeper',!OUT.espn&&'ESPN'].filter(Boolean).join(' and ')} projections couldn't be loaded${EMBED.charAt(0)==='{'?' in this copy. They load on the hosted site.':'. Reload to try again.'}</p>`:''}
+    <p class="note" style="margin-top:6px">Sleeper and ESPN projections load straight from those sites in your browser and are rescored to your league's settings. Highlighted cells lead that row; the lens count uses the consensus projection plus the six history and matchup rows.</p>`;
+
   let call = '';
   if(ps.length>1){
-    const second = sorted[1]; const pr = phi((best.wk-second.wk)/Math.sqrt(best.sd**2+second.sd**2));
+    const second = sorted[1]; const pr = phi((proj(best)-proj(second))/Math.sqrt(sdOf(best)**2+sdOf(second)**2));
     const conf = pr>0.7?'Clear call':pr>0.58?'Lean':'Coin flip';
-    const ceilPick = ps.slice().sort((a,b)=>b.ceil-a.ceil)[0], floorPick = ps.slice().sort((a,b)=>b.floor-a.floor)[0];
+    const n = LS.get(best).consensus ? LS.get(best).consensus.note : '';
+    const lensLeader = ps.slice().sort((a,b)=>wins.get(b)-wins.get(a))[0];
     let extra = '';
-    if(ceilPick!==best) extra += ` If you need a big week to win, ${esc(ceilPick.n)} has the higher ceiling (${f1(ceilPick.ceil)}).`;
+    const bn = esc(lastName(best.n));
+    if(voted && lensLeader!==best && wins.get(lensLeader)>wins.get(best)) extra += ` The other lenses lean ${esc(lastName(lensLeader.n))} (${wins.get(lensLeader)} of ${voted}), so treat this as closer than the projection gap.`;
+    else if(voted) extra += ` ${bn} also leads ${wins.get(best)} of ${voted} lenses.`;
+    const spread = LS.get(best).consensus && LS.get(best).consensus.spread;
+    if(spread>4) extra += ` The projections for ${bn} differ by ${f1(spread)} points, so there's more uncertainty than usual.`;
+    const ceil = p => proj(p)*(1+1.3*p.cv), floor = p => proj(p)*(1-0.9*p.cv);
+    const ceilPick = ps.slice().sort((a,b)=>ceil(b)-ceil(a))[0], floorPick = ps.slice().sort((a,b)=>floor(b)-floor(a))[0];
+    if(ceilPick!==best) extra += ` If you need a big week, ${esc(ceilPick.n)} has the higher ceiling (${f1(ceil(ceilPick))}).`;
     if(floorPick!==best) extra += ` If you're a heavy favorite, ${esc(floorPick.n)} has the safer floor.`;
-    call = `<div class="callout"><b>${conf}: start ${esc(best.n)}.</b> He projects ${f1(best.wk-second.wk)} points ahead of ${esc(second.n)} and outscores him about ${f0(pr*100)}% of the time.${extra}</div>`;
+    call = `<div class="callout"><b>${conf}: start ${esc(best.n)}.</b> The consensus projection (${n}) puts ${bn} ${f1(proj(best)-proj(second))} points ahead of ${esc(second.n)}, and ${bn} outscores ${esc(lastName(second.n))} about ${f0(pr*100)}% of the time.${extra}</div>`;
   }
-  $('#ssOut').innerHTML = (ssExample?`<p style="margin:12px 0 0"><span class="exnote">Example</span> <span class="small muted">Two receivers ranked close together this week. Clear them and add your own.</span></p>`:'') + `<div class="cmp">${cards}</div>${call}`;
+  $('#ssOut').innerHTML = (ssExample?`<p style="margin:12px 0 0"><span class="exnote">Example</span> <span class="small muted">Two receivers ranked close together this week. Clear them and add your own.</span></p>`:'') + `<div class="cmp">${cards}</div>${call}${table}`;
 }
 function addSS(id){ if(!id||ss.includes(id)) return; if(ssExample){ss=[];ssExample=false;} if(ss.length>=4) ss.shift(); ss.push(id); store.set('ss',ss); renderSS(); }
 
@@ -1247,7 +1389,7 @@ function syncLeague(){ if(league && league.direct && slDirect && Date.now()-leag
 slProbe.then(ok => { if(ok) syncLeague(); });
 document.addEventListener('visibilitychange', () => {
   if(document.visibilityState!=='visible' || Date.now()-lastCheck < 60000) return;
-  lastCheck = Date.now(); checkForNewData(); syncLeague(); trending = null; if(view==='waivers') loadTrending();
+  lastCheck = Date.now(); checkForNewData(); syncLeague(); trending = null; if(view==='waivers') loadTrending(); if(view==='startsit') loadOutside(true);
 });
 })();
 </script>
