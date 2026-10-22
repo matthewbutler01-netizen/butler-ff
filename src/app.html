@@ -788,7 +788,8 @@ const lastName = n => n.split(' ').filter(w=>!/^(Jr\.?|Sr\.?|II|III|IV|V)$/.test
 function lenses(p){
   const s = p.src || {}, skill = p.kind==='s', L = {};
   const bye = !p.opp;
-  L.butler = bye ? null : {v:p.wk, show:f1(p.wk), note:`floor ${f1(p.floor)} · ceiling ${f1(p.ceil)}`};
+  // players with no games yet this season get no Butler FF projection (not a zero): the consensus uses the others
+  L.butler = bye || s.dyn ? null : {v:p.wk, show:f1(p.wk), note:`floor ${f1(p.floor)} · ceiling ${f1(p.ceil)}`};
   const sp = OUT.sleeper ? outPts(OUT.sleeper[p.id], p.p) : null;
   L.sleeper = bye ? null : sp!=null ? {v:sp, show:f1(sp), note:OUT.company?`via ${OUT.company}`:''} : null;
   const ep = OUT.espn && skill ? outPts(OUT.espn[p.id], p.p) : null;
