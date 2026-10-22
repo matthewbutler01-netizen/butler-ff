@@ -466,7 +466,14 @@ dvp_out = {f"{a}|{b}": v for (a, b), v in DVP.items()}
 _days = pd.to_datetime(g[g.week == CUR_WEEK].gameday)
 _a, _b = _days.min(), _days.max()
 week_dates = f"{_a:%b} {_a.day}–{_b.day}" if _a.month == _b.month else f"{_a:%b} {_a.day}–{_b:%b} {_b.day}"
-meta = dict(season=SEASON, week=CUR_WEEK, weekDates=week_dates, lastWeek=LAST_WEEK, built=pd.Timestamp.now(tz="America/Chicago").strftime("%b %-d, %Y %-I:%M %p CT"),
+# kickoff for every team this week, so the Playbook can warn about Thursday games and late decisions
+kick = {}
+for r in g[g.week == CUR_WEEK].itertuples():
+    d = pd.Timestamp(r.gameday)
+    t = pd.Timestamp(f"{r.gameday} {r.gametime}") if isinstance(r.gametime, str) else d
+    label = f"{d:%a} {t.strftime('%-I:%M %p').replace(':00', '')} ET" if isinstance(r.gametime, str) else f"{d:%a}"
+    kick[r.home_team] = kick[r.away_team] = [str(r.gameday), label]
+meta = dict(season=SEASON, week=CUR_WEEK, weekDates=week_dates, kick=kick, lastWeek=LAST_WEEK, built=pd.Timestamp.now(tz="America/Chicago").strftime("%b %-d, %Y %-I:%M %p CT"),
             depthAsOf=str(dc.dt.max()), injWeek=int(inj.week.max()),
             byes={t: bye[t] for t in teams}, offF={t: round(off_f[t], 3) for t in teams},
             defF={t: round(def_f[t], 3) for t in teams})

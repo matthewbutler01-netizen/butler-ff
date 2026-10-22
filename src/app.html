@@ -217,6 +217,42 @@ textarea.paste{width:100%;min-height:90px;border:1px solid var(--line);backgroun
 .summary{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .summary b{font-family:var(--font-data);font-weight:500;font-size:18px}
 .leagueSel{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 6px;font-weight:600;max-width:100%}
+/* playbook */
+.pb-head{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
+.pb-head > div{min-width:0}
+.eyebrow{font-family:var(--font-data);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.match{display:grid;grid-template-columns:1fr auto 1fr;gap:12px;align-items:center}
+.match .side{min-width:0}
+.match .side.r{text-align:right}
+.match .tm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.match .score{font-family:var(--font-display);font-weight:800;font-size:46px;line-height:1}
+.match .vs{font-family:var(--font-display);font-weight:800;color:var(--muted);font-size:18px}
+.odds{display:flex;gap:18px;flex-wrap:wrap;margin-top:12px}
+.odds div{min-width:0}
+.odds b{display:block;font-family:var(--font-data);font-size:20px;font-weight:500}
+.pos-edges{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+.edge{font-size:12px;border-radius:5px;padding:3px 8px;background:var(--mid-bg)}
+.edge.up{background:var(--good-bg);color:var(--good)}
+.edge.down{background:var(--bad-bg);color:var(--bad)}
+.brief{list-style:none;margin:0;padding:0;display:grid;gap:8px}
+.brief li{display:grid;grid-template-columns:14px 1fr;gap:10px;align-items:start}
+.dot{width:10px;height:10px;border-radius:50%;margin-top:5px}
+.dot.red{background:var(--bad)} .dot.green{background:var(--good)} .dot.yellow{background:var(--flag)}
+.dot.done{background:transparent;border:2px solid var(--good);width:10px;height:10px;box-sizing:border-box}
+.moves{display:grid;gap:12px}
+.move{border:1px solid var(--line);border-left:5px solid var(--line);border-radius:10px;padding:14px;background:var(--surface);display:grid;gap:8px;min-width:0}
+.move.red{border-left-color:var(--bad)} .move.green{border-left-color:var(--good)} .move.yellow{border-left-color:var(--flag)} .move.done{border-left-color:var(--good);opacity:.85}
+.move .mh{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.move .mn{font-family:var(--font-display);font-weight:800;font-size:22px;color:var(--muted);line-height:1}
+.move .mt{font-weight:700;font-size:15px;flex:1;min-width:0}
+.move .imp{font-family:var(--font-data);font-size:13px;color:var(--good)}
+.move .why{margin:0;padding-left:18px;display:grid;gap:4px;font-size:13px}
+.move .acts{display:flex;gap:8px;flex-wrap:wrap}
+.pill{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;border-radius:999px;padding:2px 8px}
+.pill.High{background:var(--good-bg);color:var(--good)} .pill.Medium{background:var(--warn-bg);color:var(--warn)} .pill.Low{background:var(--bad-bg);color:var(--bad)}
+.pb-foot{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:16px;padding:14px;border-radius:10px;background:var(--sunk)}
+.pb-foot .grow{flex:1;min-width:0}
+@media (max-width:640px){ .match .score{font-size:36px} }
 footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--muted);font-size:12px}
 .empty{border:1px dashed var(--line);border-radius:8px;padding:18px;text-align:center;color:var(--muted)}
 @media (max-width:640px){
@@ -240,6 +276,7 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
       <button class="ghost" id="openSettings">League settings</button>
     </div>
     <nav class="tabs" aria-label="Tools">
+      <a href="#playbook" data-v="playbook">Playbook</a>
       <a href="#rankings" data-v="rankings">Rankings</a>
       <a href="#startsit" data-v="startsit">Start / Sit</a>
       <a href="#trade" data-v="trade">Trade Analyzer</a>
@@ -250,6 +287,9 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
 </header>
 
 <main class="wrap">
+  <!-- PLAYBOOK -->
+  <section class="view" id="v-playbook" hidden><div id="pb"></div></section>
+
   <!-- RANKINGS -->
   <section class="view" id="v-rankings">
     <div class="head">
@@ -778,6 +818,7 @@ async function loadOutside(force){
   if(r[1].status==='rejected') OUT.espn = null;
   OUT.status = 'done'; OUT.at = Date.now();
   if(view==='startsit'){ renderSS(); renderMine(); }
+  if(view==='playbook') renderPlaybook();
 }
 const outPts = (c, pos) => c==null ? null : c.pts!=null ? c.pts : compPts(c, pos) + (c.two||0)*2;
 const linePts = (a, pos) => a[0]*0.04 + a[1]*S.ptd + a[2]*S.int + a[3]*0.1 + a[4]*6 + a[5]*(S.rec+(pos==='TE'?S.tep:0)) + a[6]*0.1 + a[7]*6 + a[8]*-2 + (a[9]||0)*2;
@@ -913,14 +954,252 @@ function renderSS(){
 function addSS(id){ if(!id||ss.includes(id)) return; if(ssExample){ss=[];ssExample=false;} setAuto(false); if(ss.length>=4) ss.shift(); ss.push(id); store.set('ss',ss); renderSS(); }
 function setAuto(v){ ssAuto = v; store.set('ssAuto', v); }
 
+/* ---------- the Butler Playbook: this week's game plan for your team ---------- */
+const TAGW = {Q:'questionable', D:'doubtful', O:'out', IR:'on injured reserve', SUSP:'suspended'};
+const posName = {QB:'Quarterback', RB:'Running back', WR:'Wide receiver', TE:'Tight end', K:'Kicker', DST:'Defense'};
+const posPl = {QB:'quarterbacks', RB:'running backs', WR:'receivers', TE:'tight ends', K:'kicker', DST:'defense'};
+const fmtName = () => S.rec>=1 ? 'full-PPR' : S.rec>0 ? (S.rec===0.5?'half-PPR':S.rec+'-PPR') : 'standard-scoring';
+function playing(p){ return p && p.opp && !NOPLAY.includes(p.tag); }
+function teamProj(ids){
+  let mu = 0, v = 0; const ps = [];
+  (ids||[]).forEach(id => { const p = id && BY[id]; if(!p || p.kind==='pick') return; const x = playing(p) ? cons(p) : 0;
+    const sd = playing(p) ? Math.max(1.5, x*p.cv) : 0; mu += x; v += sd*sd; ps.push([p, x]); });
+  return {mu, sd: Math.sqrt(v), ps};
+}
+function vol(p){
+  const c = p.src && p.src.wk && p.src.wk.c; if(!c || p.src.dyn) return null;
+  if(p.p==='QB') return {n:c.pass_att + c.car, label:'pass attempts and carries'};
+  if(p.p==='RB') return {n:c.car + c.tgt, label:'carries and targets'};
+  if(p.p==='WR' || p.p==='TE') return {n:c.tgt, label:'targets'};
+  return null;
+}
+/* Why start A over B, from every lens that separates them. */
+function reasons(a, b){
+  const A = lenses(a), B = lenses(b), r = [], an = esc(lastName(a.n)), bn = esc(lastName(b.n));
+  if(!b.opp) r.push(`${bn} is on bye this week.`);
+  else if(NOPLAY.includes(b.tag)) r.push(`${bn} is ${TAGW[b.tag]}${b.inj?' ('+esc(b.inj)+')':''}.`);
+  else if(b.tag==='Q') r.push(`${bn} is questionable${b.inj?' ('+esc(b.inj)+')':''}.`);
+  if(A.consensus && B.consensus && b.opp && !NOPLAY.includes(b.tag)){
+    const d = A.consensus.v - B.consensus.v, src = ['butler','sleeper','espn'].filter(k=>A[k]&&B[k]), n = src.filter(k=>A[k].v>B[k].v).length;
+    if(d > 0.2) r.push(`${an} projects ${f1(d)} more points${src.length>1?` (${n===src.length?'all '+src.length:n+' of '+src.length} projections agree)`:''}.`);
+  }
+  const va = vol(a), vb = vol(b);
+  if(va && vb && b.opp && va.n - vb.n >= 1) r.push(`More opportunity: ${f1(va.n)} projected ${va.label} vs ${f1(vb.n)}${va.label==='targets' && S.rec>=1 ? `, and every catch is a full point in your ${fmtName()} league` : ''}.`);
+  if(A.usage && B.usage && A.usage.v - B.usage.v >= 1.5) r.push(`His usage is worth more: ${f1(A.usage.v)} expected points a game vs ${f1(B.usage.v)}.`);
+  if(A.form && B.form && A.form.v - B.form.v >= 3) r.push(`Hotter lately: ${f1(A.form.v)} points a game over his last 3 vs ${f1(B.form.v)}.`);
+  if(A.matchup && B.matchup && a.m - b.m >= 0.05) r.push(`Softer matchup: ${grade(a.m)} ${a.home?'vs':'at'} ${esc(a.opp)} compared with ${grade(b.m)} for ${bn}.`);
+  if(A.history && a.src.vs.length>=2 && A.history.v - (B.history?B.history.v:0) >= 4) r.push(`Has averaged ${f1(A.history.v)} in ${a.src.vs.length} games against ${esc(a.opp)}.`);
+  if(!r.length) r.push(`Slightly ahead on the consensus projection; this one is close.`);
+  return r.slice(0, 4);
+}
+function pickupReasons(fa, slot, gain, drop, rosGain, weakPos){
+  const s = fa.src || {}, r = [];
+  if(gain > 0.3) r.push(`Would start for you this week at ${slot} and add about ${f1(gain)} projected points.`);
+  if(weakPos && fa.p===weakPos) r.push(`Shores up your thinnest spot: ${posPl[weakPos]}.`);
+  if(s.tr >= 2) r.push(`Usage is rising: +${f1(s.tr)} opportunities a game over his last two games.`);
+  const sn = s.sn ? Object.entries(s.sn).sort((x,y)=>x[0]-y[0]).map(x=>x[1]) : [];
+  if(sn.length >= 2 && sn[sn.length-1] - sn[0] >= 12) r.push(`Snap share up from ${sn[0]}% to ${sn[sn.length-1]}%.`);
+  if(s.ts != null && s.ts >= 0.18) r.push(`Earning ${f0(s.ts*100)}% of his team's targets.`);
+  if(trending && trending[fa.id]) r.push(`Added in ${trending[fa.id].toLocaleString()} Sleeper leagues in the last two days.`);
+  if(isDyn() && s.age != null && s.age < 24) r.push(`At ${f0(s.age)}, he adds value beyond this season in your ${S.ltype} league.`);
+  if(drop) r.push(`${esc(drop.n)} is the lowest-value player you can cut${rosGain>0?`; ${isDyn()?'dynasty':'rest-of-season'} value goes up by ${f0(rosGain)}`:''}.`);
+  return r.slice(0, 4);
+}
+function buildPlaybook(){
+  CONS = new Map();
+  const L = buildLineup(), me = {mu:0, v:0};
+  L.rows.forEach(r => { if(r.p){ const x = L.proj.get(r.p.id); me.mu += x; const sd = Math.max(1.5, x*r.p.cv); me.v += sd*sd; } });
+  me.sd = Math.sqrt(me.v);
+  const pb = {L, me, moves:[], brief:[], edges:[], threats:[]};
+  // ----- opponent and the league-median game -----
+  const mu = league && league.week===M.week ? league.matchups : null;
+  const mine = mu && mu.find(x=>x.rid===league.myRid);
+  if(mine){
+    const o = mu.find(x=>x.mid===mine.mid && x.rid!==league.myRid);
+    if(o){
+      const T = teamProj(o.starters), t = league.teams && league.teams[o.rid];
+      pb.opp = Object.assign(T, {name: t ? t.name : 'Opponent', rec: t ? `${t.w}-${t.l}` : ''});
+      pb.pOpp = phi((me.mu - T.mu)/Math.sqrt(me.sd**2 + T.sd**2 || 1));
+      // edges by position: your best lineup vs the lineup they have set
+      const sum = arr => arr.reduce((o,[p,x]) => (o[p.p] = (o[p.p]||0) + x, o), {});
+      const mineP = sum(L.rows.filter(r=>r.p).map(r=>[r.p, L.proj.get(r.p.id)])), theirP = sum(T.ps);
+      pb.edges = POS.filter(x => mineP[x]!=null || theirP[x]!=null).map(x => ({pos:x, d:(mineP[x]||0)-(theirP[x]||0), a:mineP[x]||0, b:theirP[x]||0})).sort((x,y)=>y.d-x.d);
+      pb.threats = T.ps.filter(([p,x]) => playing(p) && p.m >= 1.08 && x >= 10).sort((x,y)=>y[1]-x[1]).slice(0,2);
+      pb.oppOut = T.ps.filter(([p]) => !playing(p)).map(([p])=>p);
+    }
+    if(league.median){
+      const others = mu.filter(x=>x.rid!==league.myRid).map(x=>teamProj(x.starters)).sort((a,b)=>a.mu-b.mu);
+      if(others.length){ const mid = others[Math.floor(others.length/2)]; pb.median = mid.mu; pb.pMed = phi((me.mu - mid.mu)/Math.sqrt(me.sd**2 + (mid.sd*0.5)**2 || 1)); }
+    }
+  }
+  // ----- move 1: fix your lineup (against what's set in Sleeper) -----
+  const sl = league && Array.isArray(league.starters) && league.starters.length ? league.starters : null;
+  if(sl){
+    const slIds = new Set(sl.map(x=>x.id).filter(Boolean)), rec = L.rows.filter(r=>r.p).map(r=>r.p);
+    const ins = rec.filter(p=>!slIds.has(p.id)), outs = sl.map(x=>x.id && BY[x.id]).filter(p=>p && !rec.includes(p));
+    const empties = sl.filter(x=>!x.raw || x.raw==='0').length;
+    const swaps = ins.map(a => { const i = outs.findIndex(b => b.p===a.p) >= 0 ? outs.findIndex(b => b.p===a.p) : 0; const b = outs.splice(i,1)[0] || null; return {a, b}; });
+    const gain = swaps.reduce((t,{a,b}) => t + L.proj.get(a.id) - (b && playing(b) ? cons(b) : 0), 0);
+    if(swaps.length){
+      const urgent = swaps.some(({b}) => b && !playing(b)) || empties;
+      const first = swaps[0];
+      pb.moves.push({key:'lineup', cat:'Fix your lineup', sev: urgent ? 'red' : 'green', impact: gain,
+        title: swaps.length===1 ? `Start ${esc(first.a.n)}${first.b?` over ${esc(first.b.n)}`:''}` : `Make ${swaps.length} lineup changes in Sleeper`,
+        detail: swaps.map(({a,b}) => `Start ${esc(a.n)}${b?`, bench ${esc(b.n)}${!b.opp?' (bye)':NOPLAY.includes(b.tag)?' ('+TAGW[b.tag]+')':''}`:' in your empty spot'}`).join('. ') + '.',
+        why: swaps.flatMap(({a,b}) => b ? [`<b>${esc(a.n)} over ${esc(b.n)}:</b> ` + reasons(a,b).join(' ')] : [`<b>${esc(a.n)}:</b> fills an empty lineup spot.`]),
+        conf: swaps.every(({a,b}) => !b || !playing(b) || L.proj.get(a.id) - cons(b) >= 2) ? 'High' : swaps.some(({a,b}) => b && playing(b) && L.proj.get(a.id) - cons(b) < 0.75) ? 'Low' : 'Medium',
+        review: {view:'startsit', ss: first.b ? [first.a.id, first.b.id] : null}});
+      swaps.filter(({b}) => b && !playing(b)).forEach(({a,b}) => pb.brief.push({sev:'red', html:`${esc(b.n)} is in your Sleeper lineup but is ${!b.opp?'on bye':TAGW[b.tag]}. Start ${esc(a.n)} instead.`}));
+      swaps.filter(({b}) => b && playing(b)).forEach(({a,b}) => pb.brief.push({sev:'green', html:`${esc(a.n)} is a better start than ${esc(b.n)} (+${f1(L.proj.get(a.id)-cons(b))}).`}));
+      if(empties) pb.brief.push({sev:'red', html:`${empties} lineup spot${empties>1?'s are':' is'} empty in Sleeper.`});
+    }
+  } else if(roster.length){
+    pb.noSleeperLineup = true;
+  }
+  // ----- move 2: improve your roster (free agents in your league) -----
+  if(league && league.taken){
+    const taken = new Set(league.taken), locked = lockedSet();
+    const weak = POS.filter(x => (S[x]||0) > 0).map(x => { const r = L.rows.filter(r=>r.lbl===x); const v = r.length ? Math.min(...r.map(r=>r.p ? L.proj.get(r.p.id) : 0)) : 99; return [x, v / (REPL_PPG[x] || 10)]; }).sort((a,b)=>a[1]-b[1]);
+    const weakPos = weak.length && weak[0][1] < 0.85 ? weak[0][0] : null;
+    const benchDrop = L.ps.filter(p => !L.used.has(p.id) && !locked.has(p.id) && p.tag!=='IR').sort((a,b)=>a.val-b.val)[0] || null;
+    const pool = ALL.filter(p => p.kind!=='pick' && !taken.has(p.id) && !isMine(p.id) && !hidden.includes(p.id) && (p.kind==='s' || (S[p.p]||0) > 0))
+      .sort((a,b) => (cons(b) + Math.max(0,b.val)/8) - (cons(a) + Math.max(0,a.val)/8)).slice(0, 40);
+    const base = L.total, cand = [];
+    pool.forEach(fa => {
+      const L2 = buildLineup(roster.concat(fa.id)); const gain = L2.total - base;
+      const row = L2.rows.find(r => r.p && r.p.id===fa.id);
+      const rosGain = benchDrop ? fa.val - benchDrop.val : fa.val;
+      const score = Math.max(0, gain) + Math.max(0, rosGain)/10 + (trending && trending[fa.id] ? Math.min(2, Math.log10(trending[fa.id]+1)/2) : 0);
+      if(score > 1 && (gain > 0.5 || rosGain > 5)) cand.push({fa, gain, slot: row ? row.lbl : null, rosGain, score});
+    });
+    cand.sort((a,b)=>b.score-a.score);
+    const best = cand[0];
+    if(best){
+      const fa = best.fa, faab = league.faab ? league.faab.budget - league.faab.used : null;
+      pb.moves.push({key:'add-'+fa.id, cat:'Improve your roster', sev:'green', impact: Math.max(best.gain, 0) + Math.max(0,best.rosGain)/10,
+        title: `Add ${esc(fa.n)} (${fa.p}, ${esc(fa.t)})${benchDrop?`, drop ${esc(benchDrop.n)}`:''}`,
+        detail: (best.gain > 0.3 ? `He'd start for you this week (+${f1(best.gain)}).` : `A stash for later weeks${isDyn()?' and future seasons':''}.`) + (faab!=null ? ` You have $${faab} of FAAB left.` : ''),
+        why: pickupReasons(fa, best.slot, best.gain, benchDrop, best.rosGain, weakPos),
+        conf: best.gain >= 2 || best.rosGain >= 25 ? 'High' : best.gain >= 0.75 || best.rosGain >= 10 ? 'Medium' : 'Low',
+        review: {view:'waivers'}, alts: cand.slice(1,3).map(c=>c.fa)});
+      pb.brief.push({sev:'green', html:`${esc(fa.n)} is available in your league${best.gain>0.3?` and would start for you this week`:''}.`});
+    }
+    if(weakPos) pb.weak = weakPos;
+  }
+  // ----- move 3: prepare for Sunday (injuries and early kickoffs) -----
+  const starters = L.rows.filter(r=>r.p).map(r=>r.p);
+  const qs = starters.filter(p=>p.tag==='Q');
+  const kickOf = p => M.kick && M.kick[p.t];
+  const early = starters.filter(p => { const k = kickOf(p); return k && /^Thu|^Fri|^Sat/.test(k[1]); });
+  const prep = [], prepWhy = [];
+  qs.forEach(p => {
+    const L2 = buildLineup(roster.filter(id=>id!==p.id)); const sub = L2.rows.find(r => r.p && !L.used.has(r.p.id));
+    const loss = L.total - L2.total, k = kickOf(p);
+    prep.push(p);
+    prepWhy.push(`<b>${esc(p.n)}</b> is questionable${p.inj?' ('+esc(p.inj)+')':''}. ${sub ? `If he's ruled out, start ${esc(sub.p.n)} (${L2.proj.get(sub.p.id)>0.05 ? f1(L2.proj.get(sub.p.id))+' projected' : 'no projection yet'})` : 'There is no healthy backup on your roster'}${loss>0.5?`, which costs about ${f1(loss)} points`:''}.${k?` His game is ${k[1]}.`:''}`);
+    pb.brief.push({sev:'red', html:`Your starting ${(posName[p.p]||p.p).toLowerCase()} ${esc(p.n)} is questionable${p.inj?' ('+esc(p.inj)+')':''}.`});
+  });
+  early.forEach(p => { if(!qs.includes(p)) prepWhy.push(`<b>${esc(p.n)}</b> plays ${kickOf(p)[1]}, so his spot locks at that kickoff. Set your lineup before then.`); });
+  const injStale = M.injWeek < M.week;
+  if(injStale) prepWhy.push(`Week ${M.week} practice reports come out Wednesday through Friday. Butler checks for them every hour, so come back after Thursday's report.`);
+  if(qs.length || early.length){
+    pb.moves.push({key:'prep', cat:'Prepare for Sunday', sev: qs.length ? 'yellow' : 'yellow', impact: qs.reduce((t,p)=>t + 0.3*L.proj.get(p.id), 0) + early.length*0.2,
+      title: qs.length ? `Monitor ${qs.length===1 ? esc(qs[0].n) : qs.length+' injury situations'} before kickoff` : `${early.length===1 ? esc(early[0].n)+' plays' : early.length+' of your starters play'} ${kickOf(early[0])[1].split(' ')[0]==='Thu'?'Thursday night':'before Sunday'}`,
+      detail: qs.length ? `${qs.map(p=>esc(lastName(p.n))).join(' and ')} ${qs.length>1?'are':'is'} questionable.${early.length?` ${early.map(p=>esc(lastName(p.n))).join(', ')} ${early.length>1?'play':'plays'} early.`:''}` : `Set your lineup before ${kickOf(early[0])[1]}.`,
+      why: prepWhy, conf: injStale ? 'Medium' : 'High', review: qs.length ? {view:'startsit'} : null});
+    early.filter(p=>!qs.includes(p)).forEach(p => pb.brief.push({sev:'yellow', html:`${esc(p.n)} plays ${kickOf(p)[1]}.`}));
+  }
+  // ----- opponent notes -----
+  (pb.threats||[]).forEach(([p,x]) => pb.brief.push({sev:'yellow', html:`Your opponent's ${(posName[p.p]||p.p).toLowerCase()} ${esc(p.n)} has a favorable matchup (${grade(p.m)} ${p.home?'vs':'at'} ${esc(p.opp)}, ${f1(x)} projected).`}));
+  if(pb.oppOut && pb.oppOut.length) pb.brief.push({sev:'green', html:`Your opponent is starting ${pb.oppOut.map(p=>`${esc(p.n)} (${!p.opp?'bye':TAGW[p.tag]})`).join(', ')}.`});
+  // ----- ranking, confidence, review time -----
+  pb.moves.sort((a,b)=>b.impact-a.impact);
+  const dismissed = store.get('pbDismissed', {}), dkey = `${league?league.id:'none'}-${M.week}`;
+  pb.dkey = dkey; pb.dismissedMoves = dismissed[dkey] || [];
+  const active = pb.moves.filter(m => !pb.dismissedMoves.includes(m.key));
+  const nMoves = active.length;
+  if(nMoves) pb.brief.push({sev:'done', html:`Recommended: make ${nMoves===1?'this move':'these '+nMoves+' moves'} before ${early.length ? kickOf(early[0])[1] : 'Sunday'}.`});
+  else pb.brief.push({sev:'done', html:`Nothing urgent: your lineup is set for Week ${M.week}.`});
+  const has = m => m && Object.keys(m).length;
+  const spreadBig = starters.filter(p => { const c = lenses(p).consensus; return c && c.spread > 5; }).length;
+  let score = (has(OUT.sleeper) ? 1 : 0) + (has(OUT.espn) ? 1 : 0) + (injStale ? 0 : 1) + (spreadBig <= 1 ? 1 : 0) - (active.some(m=>m.conf==='Low') ? 1 : 0);
+  pb.conf = score >= 4 ? 'High' : score >= 2 ? 'Medium' : 'Low';
+  pb.confWhy = [injStale ? `this week's injury reports aren't out yet` : '', !(has(OUT.sleeper)&&has(OUT.espn)) ? `${[!has(OUT.sleeper)&&'Sleeper',!has(OUT.espn)&&'ESPN'].filter(Boolean).join(' and ')} projections didn't load` : '',
+    spreadBig > 1 ? `the projections disagree on ${spreadBig} of your starters` : '', active.some(m=>m.conf==='Low') ? 'one of the calls is close' : ''].filter(Boolean);
+  pb.minutes = Math.max(1, nMoves + 1);
+  CONS = null;
+  return pb;
+}
+let PB_OPEN = {why:false, review:false};
+function renderPlaybook(){
+  const el = $('#pb');
+  if(!league || !roster.length){
+    el.innerHTML = `<div class="pb-head"><div><div class="eyebrow">The Butler Playbook</div><h1>Week ${M.week} Game Plan</h1><p class="lede">Import your Sleeper league and Butler builds your weekly game plan: your matchup outlook, the three moves that matter most for your team, and why.</p></div></div>
+      <div class="panel"><div class="empty">No league yet.<div style="margin-top:10px"><button class="btn" id="openSleeper4">Import from Sleeper</button></div></div></div>`;
+    return;
+  }
+  loadOutside(); loadTrending();
+  const pb = buildPlaybook(), dismissedAll = store.get('pbHidden', {})[pb.dkey];
+  const tn = esc(league.team || 'Your team');
+  const loading = OUT.status==='loading' ? `<span class="small muted">Loading Sleeper and ESPN projections…</span>` : '';
+  let match = '';
+  if(pb.opp){
+    const odds = [`<div><span class="small muted">Win probability</span><b>${f0(pb.pOpp*100)}%</b></div>`];
+    if(pb.pMed!=null) odds.push(`<div><span class="small muted">Beat the league median</span><b>${f0(pb.pMed*100)}%</b></div>`, `<div><span class="small muted">Expected wins this week</span><b>${(pb.pOpp+pb.pMed).toFixed(1)} of 2</b></div>`);
+    const edges = pb.edges.filter(e=>Math.abs(e.d)>=1);
+    match = `<div class="panel">
+      <div class="match"><div class="side"><div class="small muted">${tn}${league.record?` · ${league.record.w}-${league.record.l}`:''}</div><div class="score num">${f1(pb.me.mu)}</div></div>
+        <div class="vs">VS</div>
+        <div class="side r"><div class="small muted tm">${esc(pb.opp.name)}${pb.opp.rec?` · ${esc(pb.opp.rec)}`:''}</div><div class="score num">${f1(pb.opp.mu)}</div></div></div>
+      <div class="meter" aria-label="Win probability ${f0(pb.pOpp*100)} percent"><div class="fill" style="left:0;width:${(pb.pOpp*100).toFixed(1)}%"></div><div class="mid"></div></div>
+      <div class="odds">${odds.join('')}</div>
+      ${edges.length?`<div class="pos-edges">${edges.map(e=>`<span class="edge ${e.d>0?'up':'down'}">${posName[e.pos]||e.pos}: ${e.d>0?'+':''}${f1(e.d)}</span>`).join('')}</div>
+      <p class="small muted" style="margin:8px 0 0">${edges[0] && edges[0].d>0 ? `Biggest advantage: ${posPl[edges[0].pos]} (${f1(edges[0].a)} vs ${f1(edges[0].b)}).` : ''} ${edges.length && edges[edges.length-1].d<0 ? `Biggest weakness: ${posPl[edges[edges.length-1].pos]} (${f1(edges[edges.length-1].a)} vs ${f1(edges[edges.length-1].b)}).` : ''} Your projection uses Butler's recommended lineup; theirs uses the lineup they have set in Sleeper.</p>`:''}
+    </div>`;
+  } else {
+    match = `<div class="panel"><div class="match"><div class="side"><div class="small muted">${tn}</div><div class="score num">${f1(pb.me.mu)}</div></div><div class="vs"></div><div class="side r"><div class="small muted">Opponent</div><div class="score num muted">–</div></div></div>
+      <p class="note" style="margin-top:8px">${league.direct ? 'Your opponent shows up after the next sync with Sleeper.' : 'Your opponent and win probability show up with the one-click Sleeper import on the hosted site.'}</p></div>`;
+  }
+  const dots = pb.brief.map(b=>`<li><span class="dot ${b.sev}" aria-hidden="true"></span><span>${b.html}</span></li>`).join('');
+  const cats = ['Fix your lineup','Improve your roster','Prepare for Sunday'];
+  const active = pb.moves.filter(m=>!pb.dismissedMoves.includes(m.key));
+  const shown = active.slice(0,3);
+  cats.forEach(c => { if(shown.length<3 && !pb.moves.some(m=>m.cat===c)) shown.push({key:'done-'+c, cat:c, sev:'done', title: c==='Fix your lineup' ? (pb.noSleeperLineup ? 'Re-import to compare with your Sleeper lineup' : 'Your lineup is already the best one') : c==='Improve your roster' ? 'No free agent beats what you have' : 'No injury worries among your starters', detail:'', why:[], done:true}); });
+  const moves = shown.map((m,i)=>`<div class="move ${m.sev}">
+      <div class="mh"><span class="mn">${i+1}</span><div class="mt"><div class="eyebrow">${m.cat}</div>${m.title}</div>${m.done?'<span class="okc">Done</span>':`${m.impact>0.05?`<span class="imp">+${f1(m.impact)} pts</span>`:''}<span class="pill ${m.conf}">${m.conf}</span>`}</div>
+      ${m.detail?`<div class="small">${m.detail}</div>`:''}
+      ${!m.done && (PB_OPEN.why || PB_OPEN[m.key]) ? `<ul class="why">${m.why.map(w=>`<li>${w}</li>`).join('')}</ul>${m.alts && m.alts.length?`<div class="small muted">Also worth a look: ${m.alts.map(a=>`${esc(a.n)} (${a.p}, ${esc(a.t)})`).join(', ')}.</div>`:''}` : ''}
+      ${m.done?'':`<div class="acts">${m.review?`<button class="btn sm" data-pbreview="${esc(m.key)}">Review</button>`:''}<button class="btn alt sm" data-pbwhy="${esc(m.key)}">${PB_OPEN.why||PB_OPEN[m.key]?'Hide why':'See why'}</button><button class="btn alt sm" data-pbdismiss="${esc(m.key)}">Dismiss</button></div>`}
+    </div>`).join('');
+  const more = active.length > 3 ? `<p class="small muted">${active.length-3} more move${active.length-3>1?'s':''}: ${active.slice(3).map(m=>m.title).join('; ')}.</p>` : '';
+  const conf = `Butler confidence: <span class="pill ${pb.conf}">${pb.conf}</span>${pb.confWhy.length?` <span class="small muted">(${pb.confWhy.join('; ')})</span>`:''}`;
+  PB_CACHE = pb;
+  el.innerHTML = `<div class="pb-head"><div><div class="eyebrow">The Butler Playbook · ${esc(league.name)}</div><h1>Week ${M.week} Game Plan</h1><p class="lede">${M.weekDates ? esc(M.weekDates)+' · ' : ''}Built for your roster, your ${fmtName()} ${S.ltype==='redraft'?'':S.ltype+' '}scoring and lineup, and your opponent, from Butler FF, Sleeper and ESPN projections plus usage, matchup and injury data. ${loading}</p></div>
+      <span class="spacer"></span>${leagueSelect()}</div>
+    ${dismissedAll ? `<div class="panel"><p style="margin:0">You dismissed this week's game plan. <button class="btn alt sm" id="pbRestore">Show it again</button></p></div>` : `
+    ${match}
+    <div class="panel" style="margin-top:16px"><h3 style="margin-bottom:10px">Your Butler briefing</h3><ul class="brief">${dots}</ul></div>
+    <h2 style="margin:22px 0 10px">Your three most important moves</h2>
+    <div class="moves">${moves}</div>${more}
+    <div class="pb-foot"><div class="grow">${conf}<div class="small muted" style="margin-top:4px">Estimated time to review: about ${pb.minutes} minute${pb.minutes>1?'s':''}</div></div>
+      <button class="btn" id="pbReviewAll">Review my moves</button><button class="btn alt" id="pbWhyAll">${PB_OPEN.why?'Hide why':'See why'}</button><button class="btn alt" id="pbDismissAll">Dismiss</button></div>`}`;
+}
+let PB_CACHE = null;
+function pbReview(key){
+  const m = PB_CACHE && PB_CACHE.moves.find(x=>x.key===key); if(!m || !m.review) return;
+  if(m.review.ss){ ss = m.review.ss; ssExample = false; setAuto(false); store.set('ss', ss); }
+  location.hash = m.review.view; show(m.review.view);
+}
+
 /* ---------- my team + lineup (consensus projections; Sleeper lineup check) ---------- */
 const NOPLAY = ['O','D','IR','SUSP'];
 const lockedSet = () => new Set([...(league&&league.taxi||[]), ...(league&&league.reserve||[])]);
-function cons(p){ const L = lenses(p); return L.consensus ? L.consensus.v : 0; }
+let CONS = null;   // per-render memo of consensus projections (the Playbook evaluates many lineups)
+function cons(p){ if(CONS && CONS.has(p.id)) return CONS.get(p.id); const L = lenses(p), v = L.consensus ? L.consensus.v : 0; if(CONS) CONS.set(p.id, v); return v; }
 function startable(p, locked){ return p.opp && !NOPLAY.includes(p.tag) && !locked.has(p.id); }
 const SLOT_RULES = [['QB',['QB']],['RB',['RB']],['WR',['WR']],['TE',['TE']],['FLEX',['RB','WR','TE']],['SFLX',['QB','RB','WR','TE']],['K',['K']],['DST',['DST']]];
-function buildLineup(){
-  const ps = roster.map(id=>BY[id]).filter(notPick);
+function buildLineup(ids){
+  const ps = (ids || roster).map(id=>BY[id]).filter(notPick);
   const locked = lockedSet();
   const proj = new Map(ps.map(p=>[p.id, startable(p,locked) ? cons(p) : 0]));
   const pool = ps.filter(p=>startable(p,locked)).sort((a,b)=>proj.get(b.id)-proj.get(a.id));
@@ -1262,7 +1541,7 @@ async function slImportLeague(lid, quiet, background){
   const uid = store.get('slUserId','');
   if(!background){ SLD.busy=true; if(!quiet){ SL.msg='Importing…'; SL.msgKind=''; slRender(); } }
   try{
-    const [lg, rosters, users, traded] = await Promise.all([slFetch('league/'+lid), slFetch(`league/${lid}/rosters`), slFetch(`league/${lid}/users`).catch(()=>[]), slFetch(`league/${lid}/traded_picks`).catch(()=>[])]);
+    const [lg, rosters, users, traded, mu] = await Promise.all([slFetch('league/'+lid), slFetch(`league/${lid}/rosters`), slFetch(`league/${lid}/users`).catch(()=>[]), slFetch(`league/${lid}/traded_picks`).catch(()=>[]), slFetch(`league/${lid}/matchups/${M.week}`).catch(()=>[])]);
     const mineR = (rosters||[]).find(r=>r.owner_id===uid || (r.co_owners||[]).includes(uid));
     if(!mineR) throw Object.assign(new Error('noteam'), {user:true});
     const team = (users||[]).find(x=>x.user_id===uid);
@@ -1272,7 +1551,11 @@ async function slImportLeague(lid, quiet, background){
               taken: Array.from(new Set((rosters||[]).flatMap(r=>r.players||[]).map(slToId).filter(Boolean))), at: Date.now(), direct: true,
               myRid: mineR.roster_id, teams: teamsFrom(rosters, users),
               taxi: (mineR.taxi||[]).map(slToId).filter(Boolean), reserve: (mineR.reserve||[]).map(slToId).filter(Boolean),
-              starters: sleeperStarters(mineR.starters, lg && lg.roster_positions)};
+              starters: sleeperStarters(mineR.starters, lg && lg.roster_positions),
+              week: M.week, matchups: (Array.isArray(mu) ? mu : []).map(x=>({rid:x.roster_id, mid:x.matchup_id, starters:(x.starters||[]).map(sid=>sid && sid!=='0' ? slToId(sid) : null)})),
+              median: !!(lg && lg.settings && lg.settings.league_average_match),
+              faab: lg && lg.settings && lg.settings.waiver_budget ? {budget:+lg.settings.waiver_budget, used:+((mineR.settings||{}).waiver_budget_used||0)} : null,
+              record: {w:+((mineR.settings||{}).wins||0), l:+((mineR.settings||{}).losses||0), t:+((mineR.settings||{}).ties||0)}};
     const lset = (lg && lg.settings) || {};
     const sc = mapScoring(lg && lg.scoring_settings, lg && lg.roster_positions, lg && lg.total_rosters, lset);
     newLeague.picks = sc.ltype==='redraft' ? [] : makePicks((rosters||[]).map(r=>r.roster_id), traded, sc.rrounds || 4);
@@ -1417,15 +1700,17 @@ function fillSettings(){
 function syncFmt(){ const f = S.rec===1?'ppr':S.rec===0.5?'half':S.rec===0?'std':''; document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.fmt===f)); }
 
 /* ---------- routing / render ---------- */
-const VIEWS = ['rankings','startsit','trade','waivers','draft'];
+const VIEWS = ['playbook','rankings','startsit','trade','waivers','draft'];
 let view = 'rankings';
+const homeView = () => league ? 'playbook' : 'rankings';
 function show(v){
-  view = VIEWS.includes(v)?v:'rankings';
+  view = VIEWS.includes(v)?v:homeView();
   VIEWS.forEach(x=> $('#v-'+x).hidden = x!==view);
   document.querySelectorAll('nav.tabs a').forEach(a=>a.setAttribute('aria-current', a.dataset.v===view?'page':'false'));
   renderView();
 }
 function renderView(){
+  if(view==='playbook') renderPlaybook();
   if(view==='rankings') renderRankings();
   if(view==='startsit'){ renderSS(); renderMine(); }
   if(view==='trade') renderTrade();
@@ -1453,6 +1738,9 @@ document.addEventListener('click', e => {
   if(t.dataset.trm){ const [side,id] = t.dataset.trm.split(/:(.+)/); if(tradeExample){tradeExample=false;} trade[side] = trade[side].filter(x=>x!==id); store.set('trade',trade); renderTrade(); return; }
   if(t.dataset.add){ const inp = t.dataset.add==='give'?$('#tgIn'):$('#ttIn'); addTrade(t.dataset.add, BYLABEL[inp.value]); inp.value=''; return; }
   if(t.dataset.league){ slImportLeague(t.dataset.league); return; }
+  if(t.dataset.pbwhy){ PB_OPEN[t.dataset.pbwhy] = !PB_OPEN[t.dataset.pbwhy]; renderPlaybook(); return; }
+  if(t.dataset.pbreview){ pbReview(t.dataset.pbreview); return; }
+  if(t.dataset.pbdismiss){ const d = store.get('pbDismissed', {}), k = PB_CACHE.dkey; d[k] = (d[k]||[]).concat(t.dataset.pbdismiss); store.set('pbDismissed', d); renderPlaybook(); return; }
   if(t.dataset.pteam){ slPickTeam(+t.dataset.pteam); return; }
   if(t.dataset.copy){ const el = $('#'+t.dataset.copy); const sel = () => { const r=document.createRange(); r.selectNodeContents(el); const g=getSelection(); g.removeAllRanges(); g.addRange(r); };
     try{ navigator.clipboard.writeText(el.textContent).then(()=>{ t.textContent='Copied'; }, sel); }catch(err){ sel(); } return; }
@@ -1462,7 +1750,11 @@ document.addEventListener('click', e => {
     case 'ssAdd': addSS(BYLABEL[$('#ssInput').value]); $('#ssInput').value=''; break;
     case 'ssClear': ss=[]; ssExample=false; setAuto(false); store.set('ss',ss); renderSS(); break;
     case 'ssBack': setAuto(true); renderSS(); break;
-    case 'openSleeper3': openSleeper(); break;
+    case 'openSleeper3': case 'openSleeper4': openSleeper(); break;
+    case 'pbWhyAll': PB_OPEN.why = !PB_OPEN.why; renderPlaybook(); break;
+    case 'pbReviewAll': { const first = PB_CACHE && PB_CACHE.moves.find(m=>m.review && !PB_CACHE.dismissedMoves.includes(m.key)); if(first) pbReview(first.key); else { location.hash='startsit'; show('startsit'); } break; }
+    case 'pbDismissAll': { const h = store.get('pbHidden', {}); h[PB_CACHE.dkey] = true; store.set('pbHidden', h); renderPlaybook(); break; }
+    case 'pbRestore': { const h = store.get('pbHidden', {}); delete h[PB_CACHE ? PB_CACHE.dkey : '']; store.set('pbHidden', h); const d = store.get('pbDismissed', {}); delete d[PB_CACHE ? PB_CACHE.dkey : '']; store.set('pbDismissed', d); renderPlaybook(); break; }
     case 'myAdd': { const id = BYLABEL[$('#myInput').value]; if(id && !isMine(id)) toggleMine(id); $('#myInput').value=''; break; }
     case 'openSleeper': openSleeper(); break;
     case 'closeSleeper': $('#slScrim').hidden=true; break;
@@ -1508,7 +1800,7 @@ document.querySelectorAll('.wkN').forEach(el => el.textContent = `Week ${M.week}
 $('#foot').innerHTML = `Projections built ${esc(M.built)}${EMBED.charAt(0)==='{'?'':', checked for new data every hour and loaded fresh each time you open the app'}. Built from public play-by-play stats through Week ${M.lastWeek} (nflverse), depth charts as of ${esc(M.depthAsOf.slice(0,10))}, and Week ${M.injWeek} injury reports. Week ${M.week} practice reports start Wednesday, so check game-time decisions before kickoff. No betting lines, odds or sportsbook data are used anywhere in this app.`;
 fillSlots();
 recompute(); syncFmt();
-show(location.hash.slice(1) || 'rankings');
+show(location.hash.slice(1) || homeView());
 
 let lastCheck = Date.now();
 async function checkForNewData(){
