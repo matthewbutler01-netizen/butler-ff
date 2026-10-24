@@ -11,7 +11,12 @@ import pandas as pd
 DATA, OUT = sys.argv[1], sys.argv[2]
 _today = datetime.date.today()
 SEASON = int(os.environ.get("SEASON") or (_today.year if _today.month >= 8 else _today.year - 1))
-DECAY = 0.78          # recency weight per week back
+DECAY = float(os.environ.get("M_DECAY", 0.9))      # recency weight per week back
+PRIOR_V = float(os.environ.get("M_PRIOR_V", 5))     # last season's volume, in games' worth of weight
+PRIOR_E = float(os.environ.get("M_PRIOR_E", 0.5))     # last season's efficiency, as a share of its opportunities
+DVP_W = float(os.environ.get("M_DVP_W", 0.3))       # how much of the defense-vs-position signal to use
+TD_K = float(os.environ.get("M_TD_K", 2.0))         # multiplier on touchdown-rate shrinkage
+# Defaults chosen by backtesting weeks 2-6 of 2026 (scripts/backtest.py): average error 6.21 -> 5.91 PPR points.
 SKILL = ["QB", "RB", "WR", "TE"]
 
 g = pd.read_csv(f"{DATA}/games.csv")
@@ -82,7 +87,7 @@ lg_pos = dvp_raw.groupby("position").fantasy_points_ppr.mean()
 DVP = {}
 for r in dvp.itertuples():
     ratio = (r.sum + 2 * lg_pos[r.position]) / (r.count + 2) / lg_pos[r.position]
-    DVP[(r.opponent_team, r.position)] = float(np.clip(1 + 0.6 * (ratio - 1), 0.78, 1.22))
+    DVP[(r.opponent_team, r.position)] = float(np.clip(1 + DVP_W * (ratio - 1), 0.78, 1.22))
 mult = lambda opp, pos: DVP.get((opp, pos), 1.0)
 
 # ---------- league efficiency priors by position ----------
@@ -130,7 +135,7 @@ try:
     pv = pv[(pv.season_type == "REG") & pv.position.isin(SKILL)].copy()
     for c in ["passing_yards", "passing_tds", "passing_interceptions", "rushing_yards", "rushing_tds",
               "receptions", "receiving_yards", "receiving_tds", "rushing_fumbles_lost",
-              "receiving_fumbles_lost", "sack_fumbles_lost", "fantasy_points_ppr"]:
+              "receiving_fumbles_lost", "sack_fumbles_lost", "fantasy_points_ppr", "attempts", "carries", "targets"]:
         pv[c] = num(pv[c])
     pv["fum"] = pv.rushing_fumbles_lost + pv.receiving_fumbles_lost + pv.sack_fumbles_lost
     agg = pv.groupby("player_id").agg(
@@ -138,7 +143,8 @@ try:
         pint=("passing_interceptions", "mean"), ry=("rushing_yards", "mean"), rtd=("rushing_tds", "mean"),
         rec=("receptions", "mean"), rey=("receiving_yards", "mean"), retd=("receiving_tds", "mean"),
         fum=("fum", "mean"), ppr=("fantasy_points_ppr", "mean"), pos=("position", "last"),
-        name=("player_display_name", "last"))
+        name=("player_display_name", "last"), att=("attempts", "mean"), car=("carries", "mean"),
+        tgt=("targets", "mean"), team=("team", "last"))
     for pid, r in agg.iterrows():
         PREV[pid] = r
 except FileNotFoundError:
@@ -247,6 +253,17 @@ for pid, d in sk.groupby("player_id"):
 
     att = wavg(d, "attempts") if pos == "QB" else 0.0
     car, tgt = wavg(d, "carries"), wavg(d, "targets")
+    # last season as a prior: volume blended in by games' worth of weight (half if he changed teams),
+    # efficiency pulled toward his own last-season rates
+    pvr = PREV.get(pid)
+    use_prev = pvr is not None and pvr.gp >= 4 and pvr.pos == pos
+    if use_prev and PRIOR_V > 0:
+        kv = PRIOR_V * (0.5 if pvr.team != team else 1.0)
+        sw = float(d.wt.sum())
+        blend = lambda cur, prev: (cur * sw + prev * kv) / (sw + kv)
+        if pos == "QB":
+            att = blend(att, pvr.att)
+        car, tgt = blend(car, pvr.car), blend(tgt, pvr.tgt)
     # a player whose team role clearly ended (no stats in last 2 weeks while team played) gets volume cut
     gap = LAST_WEEK - d.week.max() - (1 if bye[team] in range(d.week.max() + 1, LAST_WEEK + 1) else 0)
     vol_f = 1.0 if gap <= 0 else (0.6 if gap == 1 else 0.35)
@@ -254,16 +271,24 @@ for pid, d in sk.groupby("player_id"):
     _rep = inj_last.get(pid, {})
     if roster_status in ("RES", "PUP", "NWT", "RSN", "RSR", "SUS") or _rep.get("report_status") in ("Out", "Doubtful", "Questionable"):
         vol_f = 1.0  # absence explained by injury, not a lost role
-    S = lambda c: float(d[c].sum())
+    S0 = lambda c: float(d[c].sum())
+    # last season's makes and opportunities, added to this season's at PRIOR_E weight
+    PV = {}
+    if use_prev and PRIOR_E > 0:
+        g_ = pvr.gp * PRIOR_E
+        PV = {"passing_yards": pvr.py * g_, "passing_tds": pvr.ptd * g_, "passing_interceptions": pvr.pint * g_,
+              "attempts": pvr.att * g_, "rushing_yards": pvr.ry * g_, "rushing_tds": pvr.rtd * g_, "carries": pvr.car * g_,
+              "receptions": pvr.rec * g_, "receiving_yards": pvr.rey * g_, "receiving_tds": pvr.retd * g_, "targets": pvr.tgt * g_}
+    S = lambda c: S0(c) + PV.get(c, 0.0)
     proj = dict(
         pass_att=att, pass_yd=att * shrink(S("passing_yards"), S("attempts"), pr["ypa"], 80),
-        pass_td=att * shrink(S("passing_tds"), S("attempts"), pr["ptd"], 200),
+        pass_td=att * shrink(S("passing_tds"), S("attempts"), pr["ptd"], 200 * TD_K),
         int=att * shrink(S("passing_interceptions"), S("attempts"), pr["pint"], 200),
         car=car, rush_yd=car * shrink(S("rushing_yards"), S("carries"), pr["ypc"], 40),
-        rush_td=car * shrink(S("rushing_tds"), S("carries"), pr["rtd"], 60),
+        rush_td=car * shrink(S("rushing_tds"), S("carries"), pr["rtd"], 60 * TD_K),
         tgt=tgt, rec=tgt * shrink(S("receptions"), S("targets"), pr["crate"], 30),
         rec_yd=tgt * shrink(S("receiving_yards"), S("targets"), pr["ypt"], 40),
-        rec_td=tgt * shrink(S("receiving_tds"), S("targets"), pr["retd"], 60),
+        rec_td=tgt * shrink(S("receiving_tds"), S("targets"), pr["retd"], 60 * TD_K),
     )
     if pos != "QB":
         for k in ("pass_att", "pass_yd", "pass_td", "int"):
