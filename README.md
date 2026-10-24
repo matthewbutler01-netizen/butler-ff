@@ -42,6 +42,12 @@ The week projected is the one after the last week whose games are all final. Bef
 
 The schedule file includes betting columns; `scripts/model.py` drops them before anything else runs.
 
+Licenses: nflverse data is CC BY 4.0, ffopportunity data is CC BY-SA 4.0, the DynastyProcess ID crosswalk is GPL-3.0, and the Sleeper API is free for non-commercial use. The Sleeper and ESPN projection feeds are unofficial. `python scripts/build.py data/data.json site --licensed-only` builds a version without those two feeds. The site's footer links to a full credits page.
+
+## Accuracy
+
+`scripts/backtest.py` re-runs the model for past weeks using only what was known before each week (games, snaps, injury reports and depth charts up to that point) and compares projected with actual PPR points. Results are in `backtest/`.
+
 ## Projection method
 
 `scripts/model.py`: per-game volume (attempts, carries, targets) weighted toward recent weeks; efficiency (yards and TDs per opportunity) shrunk toward position averages; adjusted by each defense's fantasy points allowed to the position; discounted for injury status; summed over the remaining schedule with byes. Kickers and defenses project from team scoring and opponent tendencies. Every number is stored as a stat line, so the page rescores it for your league's settings.

@@ -3,6 +3,7 @@ plus the app manifest, icons and offline worker.
 
 Usage: python3 scripts/build.py data/data.json site            # hosted site
        python3 scripts/build.py data/data.json out --single    # one self-contained HTML file with data inside
+       add --licensed-only to leave out the unofficial Sleeper and ESPN projection feeds (for a commercial version)
 """
 import json, shutil, sys
 from pathlib import Path
@@ -13,6 +14,7 @@ out.mkdir(parents=True, exist_ok=True)
 
 app = (ROOT / "src/app.html").read_text()
 single = "--single" in sys.argv
+licensed = "--licensed-only" in sys.argv   # leave out the unofficial Sleeper/ESPN projection feeds
 data = data_path.read_text().replace("</", "<\\/") if single else ""
 meta = json.loads(data_path.read_text())["meta"]
 
@@ -35,7 +37,8 @@ if ('serviceWorker' in navigator) {
 """
 # The app template starts with its <title>, font links and <style>; those belong in <head>.
 split = app.index('<header class="top">')
-page = head + app[:split] + "</head><body>\n" + app[split:].replace("__DATA__", data) + sw + "</body></html>\n"
+cfg = '<script>window.BFF_CONFIG={outside:false};</script>\n' if licensed else ''
+page = head + cfg + app[:split] + "</head><body>\n" + app[split:].replace("__DATA__", data) + sw + "</body></html>\n"
 (out / "index.html").write_text(page)
 if single:
     (out / "butler-ff.html").write_text(page.replace(sw, ""))

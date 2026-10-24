@@ -434,6 +434,20 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
   <div style="margin-top:18px;display:flex;gap:8px"><button class="btn" id="saveSettings">Apply</button><button class="btn alt" id="resetSettings">Reset to default</button></div>
 </aside></div>
 
+<div class="scrim" id="credScrim" hidden><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="credH">
+  <div class="dh"><h2 id="credH" style="flex:1">Data sources and credits</h2><button class="x" id="closeCredits" aria-label="Close">✕</button></div>
+  <p class="note">Butler FF is an independent fan project. It is not affiliated with or endorsed by the NFL, Sleeper or ESPN. It uses no betting lines, odds or sportsbook data.</p>
+  <div class="frame" style="margin-top:12px"><table><thead><tr><th>Source</th><th>Used for</th><th>Terms</th></tr></thead><tbody>
+    <tr><td><a href="https://github.com/nflverse/nflverse-data" target="_blank" rel="noopener">nflverse</a></td><td style="white-space:normal">Weekly player stats, schedules, injury reports, snap counts, depth charts, player bios</td><td style="white-space:normal">CC BY 4.0</td></tr>
+    <tr><td><a href="https://github.com/ffverse/ffopportunity" target="_blank" rel="noopener">ffopportunity</a> (ffverse)</td><td style="white-space:normal">Expected fantasy points from usage</td><td style="white-space:normal">CC BY-SA 4.0</td></tr>
+    <tr><td><a href="https://github.com/dynastyprocess/data" target="_blank" rel="noopener">DynastyProcess</a></td><td style="white-space:normal">Player ID matching between Sleeper, ESPN and nflverse</td><td style="white-space:normal">GPL-3.0</td></tr>
+    <tr><td><a href="https://docs.sleeper.com/" target="_blank" rel="noopener">Sleeper API</a></td><td style="white-space:normal">League import, rosters, lineups, matchups, trending adds</td><td style="white-space:normal">Free for non-commercial use</td></tr>
+    <tr class="outsideOnly"><td>Sleeper projections</td><td style="white-space:normal">Weekly projections in Start / Sit and the Playbook, loaded in your browser</td><td style="white-space:normal">Public but undocumented feed</td></tr>
+    <tr class="outsideOnly"><td>ESPN</td><td style="white-space:normal">Weekly projections in Start / Sit and the Playbook, loaded in your browser</td><td style="white-space:normal">Unofficial public feed</td></tr>
+  </tbody></table></div>
+  <p class="note" style="margin-top:12px">Projections, rankings, dynasty values and recommendations are estimates for entertainment and planning, not guarantees.</p>
+</aside></div>
+
 <div class="scrim" id="slScrim" hidden><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="slH">
   <div class="dh"><h2 id="slH" style="flex:1">Import from Sleeper</h2><button class="x" id="closeSleeper" aria-label="Close">✕</button></div>
   <p class="note">Brings in your roster, every team's roster in the league (so the waiver wire shows who's really available) and, if you like, your league's scoring and lineup settings. Sleeper's league pages are public, so no sign-in is needed. Saved in this browser only.</p>
@@ -810,7 +824,10 @@ async function loadEspnProj(){
     m[id] = {pass_yd:g(3), pass_td:g(4), int:g(20), rush_yd:g(24), rush_td:g(25), rec:g(53), rec_yd:g(42), rec_td:g(43), fum:g(72), two:g(19)+g(26)+g(44)}; });
   OUT.espn = m;
 }
+/* A licensed-only build (BFF_CONFIG.outside === false) leaves out the unofficial Sleeper and ESPN projection feeds. */
+const CFG = Object.assign({outside: true}, window.BFF_CONFIG || {});
 async function loadOutside(force){
+  if(!CFG.outside){ OUT.status = 'done'; OUT.sleeper = null; OUT.espn = null; return; }
   if(OUT.status==='loading' || (!force && OUT.status==='done' && Date.now()-OUT.at < 15*60000)) return;
   OUT.status = 'loading';
   const r = await Promise.allSettled([loadSleeperProj(), loadEspnProj()]);
@@ -916,7 +933,7 @@ function renderSS(){
 
   // lens breakdown table
   const status = OUT.status==='loading' ? '<span class="muted small">Loading…</span>' : '';
-  const rows = LENS_ROWS.map(([k,label,hint]) => {
+  const rows = LENS_ROWS.filter(([k]) => CFG.outside || (k!=='sleeper' && k!=='espn')).map(([k,label,hint]) => {
     const cells = ps.map(p => { const x = LS.get(p)[k];
       if(!x){ const pending = (k==='sleeper'||k==='espn') && OUT.status!=='done'; return `<td>${pending?status||'<span class="muted">–</span>':'<span class="muted">–</span>'}</td>`; }
       const lead = leader[k]===p;
@@ -925,8 +942,8 @@ function renderSS(){
   }).join('');
   const table = `<h3 style="margin-top:18px">Every angle</h3>
     <div class="frame lens" style="margin-top:8px"><table><thead><tr><th></th>${ps.map(p=>`<th>${esc(p.n)}</th>`).join('')}</tr></thead><tbody>${rows}</tbody></table></div>
-    ${OUT.status==='done' && (!OUT.sleeper || !OUT.espn) ? `<p class="note" style="margin-top:6px">${[!OUT.sleeper&&'Sleeper',!OUT.espn&&'ESPN'].filter(Boolean).join(' and ')} projections couldn't be loaded${EMBED.charAt(0)==='{'?' in this copy. They load on the hosted site.':'. Reload to try again.'}</p>`:''}
-    <p class="note" style="margin-top:6px">Sleeper and ESPN projections load straight from those sites in your browser and are rescored to your league's settings. Highlighted cells lead that row; the lens count uses the consensus projection plus the six history and matchup rows.</p>`;
+    ${CFG.outside && OUT.status==='done' && (!OUT.sleeper || !OUT.espn) ? `<p class="note" style="margin-top:6px">${[!OUT.sleeper&&'Sleeper',!OUT.espn&&'ESPN'].filter(Boolean).join(' and ')} projections couldn't be loaded${EMBED.charAt(0)==='{'?' in this copy. They load on the hosted site.':'. Reload to try again.'}</p>`:''}
+    <p class="note" style="margin-top:6px">${CFG.outside ? "Sleeper and ESPN projections load straight from those sites in your browser and are rescored to your league's settings. " : ''}Highlighted cells lead that row; the lens count uses the consensus projection plus the six history and matchup rows.</p>`;
 
   let call = '';
   if(ps.length>1){
@@ -1754,6 +1771,8 @@ document.addEventListener('click', e => {
     case 'ssClear': ss=[]; ssExample=false; setAuto(false); store.set('ss',ss); renderSS(); break;
     case 'ssBack': setAuto(true); renderSS(); break;
     case 'openSleeper3': case 'openSleeper4': openSleeper(); break;
+    case 'openCredits': $('#credScrim').hidden = false; break;
+    case 'closeCredits': $('#credScrim').hidden = true; break;
     case 'pbWhyAll': PB_OPEN.why = !PB_OPEN.why; renderPlaybook(); break;
     case 'pbReviewAll': { const first = PB_CACHE && PB_CACHE.moves.find(m=>m.review && !PB_CACHE.dismissedMoves.includes(m.key)); if(first) pbReview(first.key); else { location.hash='startsit'; show('startsit'); } break; }
     case 'pbDismissAll': { const h = store.get('pbHidden', {}); h[PB_CACHE.dkey] = true; store.set('pbHidden', h); renderPlaybook(); break; }
@@ -1786,8 +1805,8 @@ document.addEventListener('click', e => {
     case 'resetSettings': S = Object.assign({},DEF); store.set('settings',S); fillSettings(); break;
   }
 });
-['#scrim','#setScrim','#slScrim'].forEach(id => $(id).addEventListener('click', e => { if(e.target===e.currentTarget) e.currentTarget.hidden = true; }));
-document.addEventListener('keydown', e => { if(e.key==='Escape'){ $('#scrim').hidden=true; $('#setScrim').hidden=true; $('#slScrim').hidden=true; } if(e.key==='Enter'){
+['#scrim','#setScrim','#slScrim','#credScrim'].forEach(id => $(id).addEventListener('click', e => { if(e.target===e.currentTarget) e.currentTarget.hidden = true; }));
+document.addEventListener('keydown', e => { if(e.key==='Escape'){ $('#scrim').hidden=true; $('#setScrim').hidden=true; $('#slScrim').hidden=true; $('#credScrim').hidden=true; } if(e.key==='Enter'){
   const map = {ssInput:'ssAdd', myInput:'myAdd', tgIn:null, ttIn:null, dSearch:'dSearchGo', slLid:'slLidGo', slUser:'slFind'}; const id = e.target.id;
   if(id==='tgIn'||id==='ttIn'){ addTrade(id==='tgIn'?'give':'get', BYLABEL[e.target.value]); e.target.value=''; }
   else if(map[id]) $('#'+map[id]).click(); } });
@@ -1800,7 +1819,8 @@ window.addEventListener('hashchange', () => show(location.hash.slice(1)));
 $('#weekchip').textContent = `Week ${M.week}` + (M.weekDates ? ` · ${M.weekDates}` : '');
 $('#seasonTag').textContent = `NFL ${M.season}`;
 document.querySelectorAll('.wkN').forEach(el => el.textContent = `Week ${M.week}`);
-$('#foot').innerHTML = `Projections built ${esc(M.built)}${EMBED.charAt(0)==='{'?'':', checked for new data every hour and loaded fresh each time you open the app'}. Built from public play-by-play stats through Week ${M.lastWeek} (nflverse), depth charts as of ${esc(M.depthAsOf.slice(0,10))}, and Week ${M.injWeek} injury reports. Week ${M.week} practice reports start Wednesday, so check game-time decisions before kickoff. No betting lines, odds or sportsbook data are used anywhere in this app.`;
+$('#foot').innerHTML = `Projections built ${esc(M.built)}${EMBED.charAt(0)==='{'?'':', checked for new data every hour and loaded fresh each time you open the app'}. Built from public play-by-play stats through Week ${M.lastWeek} (nflverse), depth charts as of ${esc(M.depthAsOf.slice(0,10))}, and Week ${M.injWeek} injury reports. Week ${M.week} practice reports start Wednesday, so check game-time decisions before kickoff. No betting lines, odds or sportsbook data are used anywhere in this app. <button class="btn alt sm" id="openCredits">Data sources and credits</button>`;
+if(!CFG.outside) document.querySelectorAll('.outsideOnly').forEach(el => el.hidden = true);
 fillSlots();
 recompute(); syncFmt();
 show(location.hash.slice(1) || homeView());
