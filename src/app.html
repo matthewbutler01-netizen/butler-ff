@@ -852,8 +852,12 @@ function lenses(p){
   L.sleeper = bye ? null : sp!=null ? {v:sp, show:f1(sp), note:OUT.company?`via ${OUT.company}`:''} : null;
   const ep = OUT.espn && skill ? outPts(OUT.espn[p.id], p.p) : null;
   L.espn = bye ? null : ep!=null ? {v:ep, show:f1(ep), note:''} : null;
-  const projs = [L.butler, L.sleeper, L.espn].filter(Boolean).map(x=>x.v);
-  L.consensus = projs.length ? {v:mean(projs), show:f1(mean(projs)), note:`${projs.length} projection${projs.length>1?'s':''}`, spread: projs.length>1 ? Math.max(...projs)-Math.min(...projs) : 0} : null;
+  // Weighted average: in the Weeks 2-6 backtest, Butler FF helped most at about one-fifth of the consensus
+  // when Sleeper and ESPN are both present (weights 0.5 / 1 / 1).
+  const W3 = [[L.butler,0.5],[L.sleeper,1],[L.espn,1]].filter(x=>x[0]);
+  const projs = W3.map(x=>x[0].v), wsum = W3.reduce((t,x)=>t+x[1],0);
+  const cv = W3.length ? W3.reduce((t,x)=>t+x[0].v*x[1],0)/wsum : null;
+  L.consensus = projs.length ? {v:cv, show:f1(cv), note:`${projs.length} projection${projs.length>1?'s':''}`, spread: projs.length>1 ? Math.max(...projs)-Math.min(...projs) : 0} : null;
   const played = p.hist ? p.hist.map((x,i)=>[x,i+1]).filter(x=>x[0]!=null) : [];
   const l3 = played.slice(-3).map(x=>x[0]);
   if(l3.length) L.form = {v:mean(l3), show:f1(mean(l3)), note:`last ${l3.length}: ${played.slice(-3).map(x=>f0(x[0])).join(', ')} · season ${f1(p.avg)}`};
@@ -887,7 +891,7 @@ function lenses(p){
   return L;
 }
 const LENS_ROWS = [
-  ['consensus','Consensus projection','Average of the projections below'],
+  ['consensus','Consensus projection','Weighted average of the projections below'],
   ['butler','Butler FF','Usage-based projection with matchup and injuries'],
   ['sleeper','Sleeper','Sleeper\'s weekly projection'],
   ['espn','ESPN','ESPN\'s weekly projection'],
