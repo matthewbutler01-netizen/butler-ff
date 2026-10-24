@@ -18,6 +18,11 @@ g = pd.read_csv(f"{DATA}/games.csv")
 g = g[(g.season == SEASON) & (g.game_type == "REG")].copy()
 _done = g.groupby("week").home_score.apply(lambda s: s.notna().all())
 LAST_WEEK = int(max([wk for wk, ok in _done.items() if ok], default=0))   # last fully completed week
+# Backtest: BT_LAST_WEEK=k projects week k+1 using only what was known before it (no later games,
+# injuries, depth charts or roster moves).
+BT = int(os.environ["BT_LAST_WEEK"]) if os.environ.get("BT_LAST_WEEK") else None
+if BT:
+    LAST_WEEK = BT
 CUR_WEEK = min(LAST_WEEK + 1, 18)                                         # week being projected
 if LAST_WEEK < 1:
     sys.exit(f"No completed {SEASON} regular-season weeks yet; projections need at least one week of games.")
@@ -29,8 +34,12 @@ g = g.drop(columns=[c for c in g.columns if any(k in c for k in
 inj = pd.read_csv(f"{DATA}/injuries.csv")
 players = pd.read_csv(f"{DATA}/players.csv", low_memory=False)
 dc = pd.read_csv(f"{DATA}/depth_charts.csv", low_memory=False)
+if BT:
+    _kick = str(g[g.week == BT + 1].gameday.min())
+    dc = dc[dc.dt < _kick]
 dc = dc[dc.dt == dc.dt.max()]
 snaps = pd.read_csv(f"{DATA}/snap_counts.csv")
+snaps = snaps[snaps.week <= LAST_WEEK]
 
 num = lambda s: pd.to_numeric(s, errors="coerce").fillna(0)
 for c in ["attempts", "completions", "passing_yards", "passing_tds", "passing_interceptions",
@@ -58,7 +67,7 @@ bye = {t: next(wk for wk in range(1, 19) if (t, wk) not in sched) for t in teams
 
 # points scored / allowed per game
 pf, pa = {t: [] for t in teams}, {t: [] for t in teams}
-for r in g[g.home_score.notna()].itertuples():
+for r in g[g.home_score.notna() & (g.week <= LAST_WEEK)].itertuples():
     pf[r.home_team].append(r.home_score); pa[r.home_team].append(r.away_score)
     pf[r.away_team].append(r.away_score); pa[r.away_team].append(r.home_score)
 lg_ppg = np.mean([x for t in teams for x in pf[t]])
@@ -141,7 +150,8 @@ def prev_line(pid):
     if r is None:
         return None
     return [round(float(x), 2) for x in (r.py, r.ptd, r.pint, r.ry, r.rtd, r.rec, r.rey, r.retd, r.fum)] + [int(r.gp)]
-inj_last = inj[inj.week == inj.week.max()].dropna(subset=["report_status"]) \
+INJ_WEEK = min(int(inj.week.max()), CUR_WEEK) if BT else int(inj.week.max())
+inj_last = inj[inj.week == INJ_WEEK].dropna(subset=["report_status"]) \
     .drop_duplicates("gsis_id", keep="last").set_index("gsis_id")[["report_status", "report_primary_injury"]].to_dict("index")
 
 snaps["key"] = snaps.player.str.lower().str.replace(r"[^a-z]", "", regex=True) + "|" + snaps.team
@@ -222,6 +232,8 @@ for pid, d in sk.groupby("player_id"):
     team = dc_team.get(pid, last.team)
     st = pstat.get(pid, {})
     roster_status = st.get("status", "ACT") if isinstance(st.get("status"), str) else "ACT"
+    if BT:
+        roster_status = "ACT"   # today's roster status would leak later injuries into the past
     in_dc = pid in dc_team
     played_recent = d.week.max() >= LAST_WEEK - 1
     if not in_dc and not played_recent and roster_status == "ACT":
@@ -383,7 +395,8 @@ for pid, st in pstat.items():
         ros=dict(c=dict(zero), g=sum(1 for wk in range(CUR_WEEK, 19) if (team, wk) in sched), sos=1.0),
         pg=dict(zero), h={}, sn={}, tr=0.0, ts=None, **b, pv=prev_line(pid),
         xp={}, vs=vs_opp(pid, opp[0]), spl=splits(pid)))
-out_players += extra
+if not BT:
+    out_players += extra
 print("dynasty-only players", len(extra))
 
 # ---------- kickers ----------
