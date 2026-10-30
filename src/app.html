@@ -253,6 +253,16 @@ textarea.paste{width:100%;min-height:90px;border:1px solid var(--line);backgroun
 .pb-foot{display:flex;gap:14px;align-items:center;flex-wrap:wrap;margin-top:16px;padding:14px;border-radius:10px;background:var(--sunk)}
 .pb-foot .grow{flex:1;min-width:0}
 @media (max-width:640px){ .match .score{font-size:36px} }
+/* report card */
+.rc-sum{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,170px),1fr));gap:12px}
+.rc-sum div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:12px 14px;min-width:0}
+.rc-sum b{display:block;font-family:var(--font-display);font-weight:800;font-size:30px;line-height:1.05}
+.rc-sum span{font-size:12px;color:var(--muted)}
+.res{display:inline-block;min-width:22px;text-align:center;font-weight:700;font-size:11px;border-radius:4px;padding:1px 5px}
+.res.W{background:var(--good-bg);color:var(--good)} .res.L{background:var(--bad-bg);color:var(--bad)}
+.rc-table tr.p.sel td{background:var(--sunk)}
+.pos-up{color:var(--good)} .pos-down{color:var(--bad)}
+.verdict-ok{color:var(--good);font-weight:700} .verdict-no{color:var(--bad);font-weight:700} .verdict-push{color:var(--muted);font-weight:700}
 footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--muted);font-size:12px}
 .empty{border:1px dashed var(--line);border-radius:8px;padding:18px;text-align:center;color:var(--muted)}
 @media (max-width:640px){
@@ -277,6 +287,7 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
     </div>
     <nav class="tabs" aria-label="Tools">
       <a href="#playbook" data-v="playbook">Playbook</a>
+      <a href="#report" data-v="report">Report Card</a>
       <a href="#rankings" data-v="rankings">Rankings</a>
       <a href="#startsit" data-v="startsit">Start / Sit</a>
       <a href="#trade" data-v="trade">Trade Analyzer</a>
@@ -289,6 +300,9 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
 <main class="wrap">
   <!-- PLAYBOOK -->
   <section class="view" id="v-playbook" hidden><div id="pb"></div></section>
+
+  <!-- REPORT CARD -->
+  <section class="view" id="v-report" hidden><div id="rc"></div></section>
 
   <!-- RANKINGS -->
   <section class="view" id="v-rankings">
@@ -1215,6 +1229,149 @@ function pbReview(key){
   location.hash = m.review.view; show(m.review.view);
 }
 
+/* ---------- Report Card: how Butler's advice would have done for your team, week by week ----------
+   Butler's lineup for a past week uses only projections made before that week (history.json, built with no
+   lookahead) plus Sleeper's and ESPN's projections for that week, applied to your roster as it stood then.
+   Actual points come from Sleeper in your league's own scoring. */
+let HIST = null;
+const RCW = {};
+const RC = {week: null, token: 0, grades: null, leagueId: null};
+async function loadHistory(){
+  if(HIST) return HIST;
+  if(EMBED.charAt(0)==='{'){ HIST = {weeks:{}, sl:{}, es:{}}; return HIST; }
+  try{ const r = await fetch('history.json', {cache:'no-store'}); HIST = r.ok ? await r.json() : {weeks:{}, sl:{}, es:{}}; }
+  catch(e){ HIST = {weeks:{}, sl:{}, es:{}}; }
+  return HIST;
+}
+const sl2id = sid => { sid = String(sid); return D.sl[sid] || (HIST && HIST.sl[sid]) || slToId(sid); };
+const es2id = eid => D.es[String(eid)] || (HIST && HIST.es[String(eid)]) || null;
+const hLinePts = (a, pos) => a[0]*0.04 + a[1]*S.ptd + a[2]*S.int + a[3]*0.1 + a[4]*6 + a[5]*(S.rec+(pos==='TE'?S.tep:0)) + a[6]*0.1 + a[7]*6 + a[8]*-2;
+async function weekData(w){
+  const key = league.id + '|' + w; if(RCW[key]) return RCW[key];
+  const posQ = ['QB','RB','WR','TE','K','DEF'].map(x=>'position[]='+x).join('&');
+  const filter = {players:{limit:1000, filterSlotIds:{value:[0,2,4,6]}, sortPercOwned:{sortAsc:false,sortPriority:1}, filterStatsForCurrentSeasonScoringPeriodId:{value:[w]}}};
+  const [mu, sp, ep] = await Promise.all([
+    slFetch(`league/${league.id}/matchups/${w}`),
+    CFG.outside ? getJSON(`https://api.sleeper.app/projections/nfl/${M.season}/${w}?season_type=regular&${posQ}`).catch(()=>null) : null,
+    CFG.outside ? getJSON(`https://lm-api-reads.fantasy.espn.com/apis/v3/games/ffl/seasons/${M.season}/segments/0/leaguedefaults/3?scoringPeriodId=${w}&view=kona_player_info`, {'X-Fantasy-Filter': JSON.stringify(filter)}).catch(()=>null) : null]);
+  const pos = {}, names = {}, sProj = {}, eProj = {};
+  (Array.isArray(sp) ? sp : []).forEach(x => { const pl = x.player || {};
+    const P = pl.position==='DEF' ? 'DST' : pl.position; if(P) pos[x.player_id] = P;
+    if(pl.first_name || pl.last_name) names[x.player_id] = `${pl.first_name||''} ${pl.last_name||''}`.trim();
+    if(x.stats) sProj[x.player_id] = x.stats; });
+  ((ep && ep.players) || []).forEach(x => { const id = es2id(x.player && x.player.id); if(!id) return;
+    const st = (x.player.stats||[]).find(z => z.statSourceId===1 && z.scoringPeriodId===w); if(st) eProj[id] = st.stats; });
+  return RCW[key] = {mu: Array.isArray(mu) ? mu : [], pos, names, sProj, eProj};
+}
+function posOf(sid, wd){ const id = sl2id(sid); return (id && BY[id] && BY[id].p) || wd.pos[sid] || null; }
+function nameOf(sid, wd){ const id = sl2id(sid); return (id && BY[id] && BY[id].n) || wd.names[sid] || 'Unknown player'; }
+/* The consensus as Butler would have seen it before that week: Butler 0.5, Sleeper 1, ESPN 1, as on the live site. */
+function pastProj(sid, w, wd){
+  const id = sl2id(sid), P = posOf(sid, wd); if(!P) return {v:0, tag:''};
+  const parts = []; let tag = '';
+  const h = HIST && HIST.weeks[w] && id ? HIST.weeks[w][id] : null;
+  if(h){ if(Array.isArray(h)){ parts.push([hLinePts(h, P), 0.5]); tag = h[9] || ''; } else parts.push([+h.pts||0, 0.5]); }
+  const st = wd.sProj[sid];
+  if(st){
+    if(P==='K' || P==='DST'){ if(st.pts_ppr!=null) parts.push([+st.pts_ppr, 1]); }
+    else parts.push([compPts({pass_yd:st.pass_yd||0, pass_td:st.pass_td||0, int:st.pass_int||0, rush_yd:st.rush_yd||0, rush_td:st.rush_td||0,
+      rec:st.rec||0, rec_yd:st.rec_yd||0, rec_td:st.rec_td||0, fum:st.fum_lost||0}, P) + ((st.pass_2pt||0)+(st.rush_2pt||0)+(st.rec_2pt||0))*2, 1]);
+  }
+  const e = id && P!=='K' && P!=='DST' ? wd.eProj[id] : null;
+  if(e){ const g = k => +(e[k]||0);
+    parts.push([compPts({pass_yd:g(3), pass_td:g(4), int:g(20), rush_yd:g(24), rush_td:g(25), rec:g(53), rec_yd:g(42), rec_td:g(43), fum:g(72)}, P) + (g(19)+g(26)+g(44))*2, 1]); }
+  if(!parts.length) return {v:0, tag};
+  const ws = parts.reduce((t,x)=>t+x[1], 0);
+  return {v: parts.reduce((t,x)=>t+x[0]*x[1], 0)/ws, tag};
+}
+function lineupFrom(cands, val){
+  const pool = cands.filter(c=>c.P).slice().sort((a,b)=>val(b)-val(a)), used = new Set(), picks = [];
+  const count = {QB:S.QB, RB:S.RB, WR:S.WR, TE:S.TE, FLEX:S.FLEX, SFLX:S.SFLEX, K:S.K, DST:S.DST};
+  SLOT_RULES.forEach(([lbl, ok]) => { for(let i=0;i<(count[lbl]||0);i++){
+    const c = pool.find(x => !used.has(x.sid) && ok.includes(x.P)); if(c){ used.add(c.sid); picks.push({lbl, c}); } } });
+  return {picks, ids: used};
+}
+async function gradeWeek(w){
+  const wd = await weekData(w);
+  const me = wd.mu.find(x => x.roster_id===league.myRid); if(!me) return null;
+  const opp = wd.mu.find(x => x.matchup_id!=null && x.matchup_id===me.matchup_id && x.roster_id!==me.roster_id);
+  const pts = me.players_points || {};
+  const locked = new Set([...(league.taxi||[]), ...(league.reserve||[])]);
+  const cands = (me.players||[]).filter(sid => !locked.has(sl2id(sid))).map(sid => ({sid, P: posOf(sid, wd)}));
+  const proj = new Map(cands.map(c => { const r = pastProj(c.sid, w, wd); return [c.sid, NOPLAY.includes(r.tag) ? 0 : r.v]; }));
+  const bl = lineupFrom(cands.filter(c => proj.get(c.sid) > 0.05), c => proj.get(c.sid));
+  const best = lineupFrom(cands, c => +pts[c.sid] || 0);
+  const sum = ids => [...ids].reduce((t,sid)=>t + (+pts[sid]||0), 0);
+  const U = new Set((me.starters||[]).filter(x => x && x!=='0'));
+  const ins = [...bl.ids].filter(sid => !U.has(sid)), outs = [...U].filter(sid => !bl.ids.has(sid));
+  const calls = ins.map(a => { const pa = posOf(a, wd); let i = outs.findIndex(b => posOf(b, wd)===pa); if(i < 0) i = 0; const b = outs.splice(i,1)[0] || null;
+    return {a, b, sa: +pts[a]||0, sb: b ? +pts[b]||0 : 0, ja: proj.get(a)||0, jb: b ? proj.get(b)||0 : 0}; });
+  const yours = +me.points || 0, butler = sum(bl.ids), bestPts = sum(best.ids);
+  const oppPts = opp ? +opp.points || 0 : null;
+  const others = wd.mu.filter(x => x.roster_id!==me.roster_id).map(x => +x.points||0);
+  const half = Math.floor(wd.mu.length/2);
+  const beatsMed = sc => others.filter(x => x > sc).length < half;
+  const benchMiss = [...best.ids].filter(sid => !U.has(sid)).sort((x,y)=>(+pts[y]||0)-(+pts[x]||0))[0] || null;
+  return {w, yours, butler, best: bestPts, opp: oppPts,
+    oppName: opp && league.teams && league.teams[opp.roster_id] ? league.teams[opp.roster_id].name : 'Opponent',
+    won: oppPts!=null ? yours > oppPts : null, butlerWon: oppPts!=null ? butler > oppPts : null,
+    med: league.median ? beatsMed(yours) : null, butlerMed: league.median ? beatsMed(butler) : null,
+    calls, right: calls.filter(c => c.b && c.sa > c.sb).length, wrong: calls.filter(c => c.b && c.sa < c.sb).length,
+    agreed: [...bl.ids].filter(sid => U.has(sid)).length, hasButler: !!(HIST && HIST.weeks[w] && Object.keys(HIST.weeks[w]).length),
+    benchMiss: benchMiss ? {name: nameOf(benchMiss, wd), pts: +pts[benchMiss]||0} : null,
+    nm: sid => nameOf(sid, wd), played: yours > 0 || (oppPts||0) > 0};
+}
+async function renderReport(){
+  const el = $('#rc'); const tok = ++RC.token;
+  const head = `<div class="pb-head"><div><div class="eyebrow">Report Card${league ? ' · '+esc(league.name) : ''}</div><h1>How Butler's advice did</h1>
+    <p class="lede">Each week, the lineup Butler would have set from projections made before kickoff, scored with what actually happened in your league. Butler is graded against your lineups and against the best lineup your roster could have fielded.</p></div><span class="spacer"></span>${leagueSelect()}</div>`;
+  if(!league || !roster.length){ el.innerHTML = head + `<div class="panel"><div class="empty">Import your Sleeper league to see Butler's report card for your team.<div style="margin-top:10px"><button class="btn" id="openSleeper4">Import from Sleeper</button></div></div></div>`; return; }
+  if(!league.direct || !(await slProbe)){ el.innerHTML = head + `<div class="panel"><div class="empty">The report card reads your past matchups from Sleeper, which works on the hosted site with one-click import.</div></div>`; return; }
+  if(RC.leagueId !== league.id){ RC.grades = null; RC.week = null; RC.leagueId = league.id; }
+  if(!RC.grades){
+    el.innerHTML = head + `<div class="panel"><p class="muted" style="margin:0">Grading Weeks 1–${M.lastWeek}: reading your matchups and that week's projections…</p></div>`;
+    await loadHistory();
+    const weeks = Array.from({length: M.lastWeek}, (_,i) => i+1);
+    const G = (await Promise.all(weeks.map(w => gradeWeek(w).catch(() => null)))).filter(g => g && g.played);
+    if(tok !== RC.token) return;
+    RC.grades = G;
+  }
+  const G = RC.grades;
+  if(!G.length){ el.innerHTML = head + `<div class="panel"><div class="empty">No completed weeks to grade yet.</div></div>`; return; }
+  if(RC.week==null || !G.some(g=>g.w===RC.week)) RC.week = G[G.length-1].w;
+  const gain = G.reduce((t,g)=>t + g.butler - g.yours, 0), left = G.reduce((t,g)=>t + g.best - g.yours, 0);
+  const right = G.reduce((t,g)=>t+g.right,0), wrong = G.reduce((t,g)=>t+g.wrong,0);
+  const hasOpp = G.some(g=>g.won!=null);
+  const flipW = G.filter(g=>g.won===false && g.butlerWon===true).length, flipL = G.filter(g=>g.won===true && g.butlerWon===false).length;
+  const mW = G.filter(g=>g.med===false && g.butlerMed===true).length, mL = G.filter(g=>g.med===true && g.butlerMed===false).length;
+  const better = G.filter(g=>g.butler > g.yours + 0.05).length, worse = G.filter(g=>g.butler < g.yours - 0.05).length;
+  const sign = x => (x>=0?'+':'−') + f1(Math.abs(x));
+  const headline = gain >= 0
+    ? `Following Butler's lineups would have scored <b>${f1(gain)}</b> more points over ${G.length} week${G.length>1?'s':''} (${f1(gain/G.length)} a week)${hasOpp && (flipW||mW) ? `, turning ${[flipW?`${flipW} matchup loss${flipW>1?'es':''}`:'', mW?`${mW} median loss${mW>1?'es':''}`:''].filter(Boolean).join(' and ')} into wins${flipL||mL?` and costing ${flipL+mL} win${flipL+mL>1?'s':''}`:''}` : ''}.`
+    : `Your own lineups beat Butler's by <b>${f1(-gain)}</b> points over ${G.length} week${G.length>1?'s':''}. Nice work.`;
+  const sum = `<div class="rc-sum">
+      <div><span>Points vs your lineups</span><b class="${gain>=0?'pos-up':'pos-down'}">${sign(gain)}</b><span>${better} week${better===1?'':'s'} better, ${worse} worse</span></div>
+      <div><span>Disputed calls Butler won</span><b>${right+wrong ? f0(100*right/(right+wrong))+'%' : '–'}</b><span>${right} right, ${wrong} wrong</span></div>
+      ${hasOpp?`<div><span>Results Butler would have flipped</span><b>${flipW+mW}</b><span>${flipW} matchup${league.median?`, ${mW} median`:''} · ${flipL+mL} the other way</span></div>`:''}
+      <div><span>Left on your bench (hindsight)</span><b>${f1(left/G.length)}</b><span>points a week vs your best possible lineup</span></div>
+    </div>`;
+  const res = (x) => x==null ? '' : `<span class="res ${x?'W':'L'}">${x?'W':'L'}</span>`;
+  const rows = G.map(g => `<tr class="p ${g.w===RC.week?'sel':''}" data-rcw="${g.w}"><td class="num">${g.w}</td><td class="r num">${f1(g.yours)}</td><td class="r num"><b>${f1(g.butler)}</b> <span class="small ${g.butler>=g.yours?'pos-up':'pos-down'}">${sign(g.butler-g.yours)}</span></td><td class="r num hide-sm">${f1(g.best)}</td><td class="r num hide-sm">${g.opp!=null?f1(g.opp):'–'}</td><td>${res(g.won)}${league.median?' '+res(g.med):''}</td><td>${res(g.butlerWon)}${league.median?' '+res(g.butlerMed):''}</td><td class="r num">${g.right+g.wrong?`${g.right}/${g.right+g.wrong}`:'–'}</td></tr>`).join('');
+  const table = `<div class="frame rc-table" style="margin-top:16px"><table><thead><tr><th>Wk</th><th class="r">You</th><th class="r">Butler's lineup</th><th class="r hide-sm">Best possible</th><th class="r hide-sm">Opponent</th><th>Your result${league.median?'s':''}</th><th>With Butler</th><th class="r">Calls won</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <p class="note" style="margin-top:6px">${league.median?'Results show the matchup, then the league-median game. ':''}"With Butler" assumes your opponent's score stays the same. Tap a week for its calls.</p>`;
+  const g = G.find(x=>x.w===RC.week);
+  const callRows = g.calls.map(c => { const v = !c.b ? 'push' : c.sa > c.sb ? 'ok' : c.sa < c.sb ? 'no' : 'push';
+    return `<tr><td style="white-space:normal">Start <b>${esc(g.nm(c.a))}</b>${c.b?` over ${esc(g.nm(c.b))}`:' in an empty spot'}<div class="small muted">Projected ${f1(c.ja)}${c.b?` vs ${c.jb>0.05?f1(c.jb):'not expected to play'}`:''}</div></td><td class="r num">${f1(c.sa)}</td><td class="r num">${c.b?f1(c.sb):'–'}</td><td><span class="verdict-${v}">${v==='ok'?'Right':v==='no'?'Wrong':'Even'}</span></td></tr>`; }).join('');
+  const detail = `<div class="panel" style="margin-top:16px"><h3>Week ${g.w}${g.opp!=null?` vs ${esc(g.oppName)}`:''}</h3>
+    <p style="margin:8px 0 0">You scored <b class="num">${f1(g.yours)}</b>${g.opp!=null?` and ${g.won?'won':'lost'} (${f1(g.yours)}–${f1(g.opp)})`:''}. Butler's lineup would have scored <b class="num">${f1(g.butler)}</b>${g.butlerWon!=null && g.butlerWon!==g.won?`, which would have ${g.butlerWon?'won':'lost'} the matchup`:''}. The best lineup your roster could have fielded scored <b class="num">${f1(g.best)}</b>.${g.benchMiss && g.benchMiss.pts>0?` Biggest points left on your bench: ${esc(g.benchMiss.name)} (${f1(g.benchMiss.pts)}).`:''}</p>
+    ${g.calls.length ? `<div class="frame" style="margin-top:12px"><table><thead><tr><th>Where Butler disagreed with your lineup</th><th class="r">Scored</th><th class="r">Instead of</th><th>Call</th></tr></thead><tbody>${callRows}</tbody></table></div>`
+      : `<p class="small muted" style="margin:10px 0 0">Butler would have started the same ${g.agreed} players you did.</p>`}
+    ${!g.hasButler ? `<p class="note" style="margin-top:8px">Week ${g.w}: Butler's own model had no games to project from yet, so this week uses Sleeper and ESPN projections only.</p>` : ''}
+  </div>`;
+  if(tok !== RC.token) return;
+  el.innerHTML = head + `<div class="panel"><p style="margin:0 0 12px">${headline}</p>${sum}</div>` + table + detail;
+}
+
 /* ---------- my team + lineup (consensus projections; Sleeper lineup check) ---------- */
 const NOPLAY = ['O','D','IR','SUSP'];
 const lockedSet = () => new Set([...(league&&league.taxi||[]), ...(league&&league.reserve||[])]);
@@ -1724,7 +1881,7 @@ function fillSettings(){
 function syncFmt(){ const f = S.rec===1?'ppr':S.rec===0.5?'half':S.rec===0?'std':''; document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.fmt===f)); }
 
 /* ---------- routing / render ---------- */
-const VIEWS = ['playbook','rankings','startsit','trade','waivers','draft'];
+const VIEWS = ['playbook','report','rankings','startsit','trade','waivers','draft'];
 let view = 'rankings';
 const homeView = () => league ? 'playbook' : 'rankings';
 function show(v){
@@ -1735,6 +1892,7 @@ function show(v){
 }
 function renderView(){
   if(view==='playbook') renderPlaybook();
+  if(view==='report') renderReport();
   if(view==='rankings') renderRankings();
   if(view==='startsit'){ renderSS(); renderMine(); }
   if(view==='trade') renderTrade();
@@ -1748,7 +1906,7 @@ document.addEventListener('click', e => {
   const t = e.target.closest('button,tr.p,a[data-v]'); if(!t) return;
   if(t.dataset.star){ e.stopPropagation(); toggleMine(t.dataset.star); return; }
   if(t.dataset.hide){ e.stopPropagation(); hidden.push(t.dataset.hide); store.set('hidden',hidden); renderWaivers(); return; }
-  if(t.matches('tr.p')){ openPlayer(t.dataset.id); return; }
+  if(t.matches('tr.p')){ if(t.dataset.rcw){ RC.week = +t.dataset.rcw; renderReport(); return; } openPlayer(t.dataset.id); return; }
   if(t.dataset.fmt){ S.rec = {ppr:1,half:0.5,std:0}[t.dataset.fmt]; store.set('settings',S); renderAll(); return; }
   if(t.dataset.outlook){ S.dmode=t.dataset.outlook; store.set('settings',S); renderAll(); return; }
   if(t.dataset.reload){ location.reload(); return; }

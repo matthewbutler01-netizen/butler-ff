@@ -33,6 +33,8 @@ jobs:
         run: scripts/fetch_data.sh
       - name: Build projections
         run: python scripts/model.py data data/data.json
+      - name: Rebuild past weekly projections (Report Card)
+        run: python scripts/history.py data data/history.json
       - name: Build site
         run: python scripts/build.py data/data.json site
       - name: Compare with the live site
@@ -46,9 +48,10 @@ jobs:
           def core(d):
               d = dict(d); d["meta"] = {k: v for k, v in d["meta"].items() if k != "built"}
               return json.dumps(d, sort_keys=True)
-          new = core(json.load(open("site/data.json")))
+          new = core(json.load(open("site/data.json"))) + open("site/history.json").read()
           try:
               old = core(json.load(urllib.request.urlopen(os.environ["LIVE_URL"], timeout=30)))
+              old += urllib.request.urlopen(os.environ["LIVE_URL"].replace("data.json", "history.json"), timeout=30).read().decode()
           except Exception as e:
               print("Live data not readable:", e); old = None
           changed = os.environ["EVENT"] != "schedule" or old != new

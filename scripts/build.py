@@ -46,6 +46,9 @@ if single:
     print(f"Built self-contained Week {meta['week']} → {out/'butler-ff.html'}")
     sys.exit(0)
 shutil.copyfile(data_path, out / "data.json")
+hist = data_path.parent / "history.json"          # Butler's past weekly projections, for the Report Card
+if hist.exists():
+    shutil.copyfile(hist, out / "history.json")
 shutil.copytree(ROOT / "public", out, dirs_exist_ok=True)
 # Bump the worker's cache name each build so installed apps pick up new projections.
 swp = out / "sw.js"

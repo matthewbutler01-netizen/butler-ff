@@ -1,9 +1,10 @@
 // Offline support. Every page load and data request goes to the network first (bypassing the browser
 // cache), so new projections appear as soon as they are published; the saved copy is used only offline.
 const CACHE = 'butler-ff-__BUILD__';
-const SHELL = ['./', './index.html', './data.json', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
+const SHELL = ['./', './index.html', './data.json', './history.json', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png'];
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, {cache: 'reload'})))));
+  // one missing file (history.json early in a season) must not block the install
+  e.waitUntil(caches.open(CACHE).then(c => Promise.allSettled(SHELL.map(u => c.add(new Request(u, {cache: 'reload'}))))));
   self.skipWaiting();
 });
 self.addEventListener('activate', e => {

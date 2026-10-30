@@ -3,6 +3,7 @@
 Fantasy football tools for NFL season-long leagues, with no betting data anywhere: no odds, lines, props or sportsbook links.
 
 - **The Butler Playbook** (home page once your league is imported): your weekly game plan. Matchup outlook against this week's opponent (projected scores, win probability, the league-median game if your league has one, biggest positional advantages and weaknesses), a color-coded briefing, and your three most important moves (fix your lineup, improve your roster from your league's free agents, prepare for injuries and early kickoffs), each with reasons, a confidence level, Review / See why / Dismiss, and an estimated review time
+- **Report Card**: how Butler's advice would have done for your team, every completed week. Butler's lineup is rebuilt from projections made before that week's games (no hindsight), applied to your roster as it stood then, and scored with your league's actual points. Shows points gained or lost against your lineups, calls Butler won where it disagreed with you, results it would have flipped (including the league-median game), and points left on your bench compared with your best possible lineup
 - **Rankings**: this week and rest of season, by position or overall, with tiers, matchup grades and floor-to-ceiling ranges
 - **Start / Sit**: your best lineup from your actual roster, built from the consensus of Butler FF, Sleeper and ESPN projections and checked against the lineup you have set in Sleeper (with the exact changes to make, and warnings for starters who are out or on bye). Each starting spot shows your best bench alternative and how close the call is; the closest call opens automatically in the comparison tool. Compare up to four players across several lenses: projections from Butler FF, Sleeper and ESPN (averaged into a consensus), recent form, usage-based expected points, matchup, every game against this week's opponent since two seasons ago, home/road splits, and last season. Plus an optimal lineup for your roster
 - **Trade Analyzer**: rest-of-season value over a replacement-level starter in your league
@@ -24,6 +25,7 @@ It opens full screen with its own icon and works offline with the last projectio
 ## How it updates
 
 - **Every hour**, a GitHub Action (`.github/workflows/update.yml`) downloads the latest public data and rebuilds the projections. It redeploys only when something changed, so most hourly runs finish without a deploy.
+- **Every hour**, the same run also rebuilds Butler's past weekly projections (`scripts/history.py`, no lookahead) for the Report Card.
 - **Every time you open or refresh the app**, it loads the newest projections (`data.json`, never from the browser cache) and re-syncs your Sleeper league. If the app has been sitting open in the background, it checks again when you come back to it.
 - Run an update by hand from the **Actions** tab › *Update projections and deploy* › **Run workflow**.
 
