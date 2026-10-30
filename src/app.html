@@ -1296,8 +1296,11 @@ async function gradeWeek(w){
   const me = wd.mu.find(x => x.roster_id===league.myRid); if(!me) return null;
   const opp = wd.mu.find(x => x.matchup_id!=null && x.matchup_id===me.matchup_id && x.roster_id!==me.roster_id);
   const pts = me.players_points || {};
-  const locked = new Set([...(league.taxi||[]), ...(league.reserve||[])]);
-  const cands = (me.players||[]).filter(sid => !locked.has(sl2id(sid))).map(sid => ({sid, P: posOf(sid, wd)}));
+  // Everyone on the roster that week. Today's IR list says nothing about a past week (players injured then had
+  // no projection and no points anyway); today's taxi squad stays out unless you actually started them that week.
+  const startedThen = new Set((me.starters||[]).filter(x => x && x!=='0'));
+  const taxi = new Set(league.taxi||[]);
+  const cands = (me.players||[]).filter(sid => !taxi.has(sl2id(sid)) || startedThen.has(sid)).map(sid => ({sid, P: posOf(sid, wd)}));
   const proj = new Map(cands.map(c => { const r = pastProj(c.sid, w, wd); return [c.sid, NOPLAY.includes(r.tag) ? 0 : r.v]; }));
   const bl = lineupFrom(cands.filter(c => proj.get(c.sid) > 0.05), c => proj.get(c.sid));
   const best = lineupFrom(cands, c => +pts[c.sid] || 0);
