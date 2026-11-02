@@ -16,6 +16,9 @@ PRIOR_V = float(os.environ.get("M_PRIOR_V", 5))     # last season's volume, in g
 PRIOR_E = float(os.environ.get("M_PRIOR_E", 0.5))     # last season's efficiency, as a share of its opportunities
 DVP_W = float(os.environ.get("M_DVP_W", 0.3))       # how much of the defense-vs-position signal to use
 TD_K = float(os.environ.get("M_TD_K", 2.0))         # multiplier on touchdown-rate shrinkage
+FRESH_ON = int(os.environ.get("M_FRESH", 0))        # this week's report: Out = 0, Doubtful = 0.15 (stale report: 0.5)
+VACATE = float(os.environ.get("M_VACATE", 0))       # share of an absent teammate's targets/carries passed to the rest
+ENV = float(os.environ.get("M_ENV", 0))             # touchdowns scale with (team scoring x opponent points allowed) ** ENV
 # Defaults chosen by backtesting weeks 2-6 of 2026 (scripts/backtest.py): average error 6.21 -> 5.91 PPR points.
 SKILL = ["QB", "RB", "WR", "TE"]
 
@@ -230,6 +233,28 @@ def splits(pid):
 def wavg(d, c):
     return float((d[c] * d.wt).sum() / d.wt.sum())
 
+FRESH = INJ_WEEK == CUR_WEEK          # this week's practice report is already out
+def out_this_week(pid):
+    rep_ = inj_last.get(pid, {}).get("report_status")
+    if FRESH and rep_ in ("Out", "Doubtful"):
+        return True
+    st_ = pstat.get(pid, {}).get("status")
+    return (not BT) and st_ in ("RES", "PUP", "NWT", "RSN", "RSR", "SUS")
+
+# Teammate absences: volume that recent-role players who are out this week leave behind, by team
+VAC = {}
+if VACATE > 0:
+    for pid_, d_ in sk.groupby("player_id"):
+        if d_.week.max() < LAST_WEEK - 2:
+            continue
+        team_ = dc_team.get(pid_, d_.sort_values("week").iloc[-1].team)
+        if team_ != d_.sort_values("week").iloc[-1].team:
+            continue
+        v = VAC.setdefault(team_, {"tgt_out": 0.0, "tgt_in": 0.0, "car_out": 0.0, "car_in": 0.0})
+        t_, c_ = wavg(d_, "targets"), wavg(d_, "carries") if d_.iloc[-1].position == "RB" else 0.0
+        side = "out" if out_this_week(pid_) else "in"
+        v["tgt_" + side] += t_; v["car_" + side] += c_
+
 out_players = []
 for pid, d in sk.groupby("player_id"):
     d = d.sort_values("week")
@@ -264,6 +289,12 @@ for pid, d in sk.groupby("player_id"):
         if pos == "QB":
             att = blend(att, pvr.att)
         car, tgt = blend(car, pvr.car), blend(tgt, pvr.tgt)
+    v_ = VAC.get(team)
+    if v_ and not out_this_week(pid):
+        if v_["tgt_in"] > 0:
+            tgt *= min(1.5, 1 + VACATE * v_["tgt_out"] / v_["tgt_in"])
+        if pos == "RB" and v_["car_in"] > 0:
+            car *= min(1.5, 1 + VACATE * v_["car_out"] / v_["car_in"])
     # a player whose team role clearly ended (no stats in last 2 weeks while team played) gets volume cut
     gap = LAST_WEEK - d.week.max() - (1 if bye[team] in range(d.week.max() + 1, LAST_WEEK + 1) else 0)
     vol_f = 1.0 if gap <= 0 else (0.6 if gap == 1 else 0.35)
@@ -304,7 +335,8 @@ for pid, d in sk.groupby("player_id"):
     elif roster_status == "SUS":
         tag, avail = "SUSP", 0.0
     elif rep.get("report_status") in ("Out", "Doubtful"):
-        tag, avail = rep["report_status"][0], 0.5
+        tag = rep["report_status"][0]
+        avail = (0.0 if tag == "O" else 0.15) if (FRESH_ON and FRESH) else 0.5
     elif rep.get("report_status") == "Questionable":
         tag, avail = "Q", 0.92
     injury = rep.get("report_primary_injury", "") if tag else ""
@@ -317,6 +349,10 @@ for pid, d in sk.groupby("player_id"):
         c = dict(proj)
         for k in ("pass_yd", "pass_td", "rush_yd", "rush_td", "rec_yd", "rec_td"):
             c[k] *= m
+        if ENV:
+            envf = (off_f[team] * def_f[opp]) ** ENV
+            for k in ("pass_td", "rush_td", "rec_td"):
+                c[k] *= envf
         c["rec"] *= 1 + 0.4 * (m - 1)
         c["int"] *= 2 - m
         return opp, home, m, c
