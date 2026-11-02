@@ -16,10 +16,11 @@ PRIOR_V = float(os.environ.get("M_PRIOR_V", 5))     # last season's volume, in g
 PRIOR_E = float(os.environ.get("M_PRIOR_E", 0.5))     # last season's efficiency, as a share of its opportunities
 DVP_W = float(os.environ.get("M_DVP_W", 0.3))       # how much of the defense-vs-position signal to use
 TD_K = float(os.environ.get("M_TD_K", 2.0))         # multiplier on touchdown-rate shrinkage
-FRESH_ON = int(os.environ.get("M_FRESH", 0))        # this week's report: Out = 0, Doubtful = 0.15 (stale report: 0.5)
+FRESH_ON = int(os.environ.get("M_FRESH", 1))        # this week's report: Out = 0, Doubtful = 0.15 (stale report: 0.5)
 VACATE = float(os.environ.get("M_VACATE", 0))       # share of an absent teammate's targets/carries passed to the rest
 ENV = float(os.environ.get("M_ENV", 0))             # touchdowns scale with (team scoring x opponent points allowed) ** ENV
 # Defaults chosen by backtesting weeks 2-6 of 2026 (scripts/backtest.py): average error 6.21 -> 5.91 PPR points.
+# M_FRESH on (tuned on weeks 2-5, checked on 6-7): average error 5.50 -> 5.19 on weeks 6-7. VACATE and ENV tested, no gain.
 SKILL = ["QB", "RB", "WR", "TE"]
 
 g = pd.read_csv(f"{DATA}/games.csv")
