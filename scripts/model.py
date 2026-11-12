@@ -541,7 +541,7 @@ dvp_out = {f"{a}|{b}": v for (a, b), v in DVP.items()}
 _days = pd.to_datetime(g[g.week == CUR_WEEK].gameday)
 _a, _b = _days.min(), _days.max()
 week_dates = f"{_a:%b} {_a.day}–{_b.day}" if _a.month == _b.month else f"{_a:%b} {_a.day}–{_b:%b} {_b.day}"
-# kickoff for every team this week, so the Playbook can warn about Thursday games and late decisions
+# kickoff for every team this week, so the Game Plan can warn about Thursday games and late decisions
 kick = {}
 for r in g[g.week == CUR_WEEK].itertuples():
     d = pd.Timestamp(r.gameday)

@@ -217,7 +217,7 @@ textarea.paste{width:100%;min-height:90px;border:1px solid var(--line);backgroun
 .summary{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .summary b{font-family:var(--font-data);font-weight:500;font-size:18px}
 .leagueSel{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 6px;font-weight:600;max-width:100%}
-/* playbook */
+/* game plan */
 .pb-head{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .pb-head > div{min-width:0}
 .eyebrow{font-family:var(--font-data);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
@@ -286,7 +286,7 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
       <button class="ghost" id="openSettings">League settings</button>
     </div>
     <nav class="tabs" aria-label="Tools">
-      <a href="#playbook" data-v="playbook">Playbook</a>
+      <a href="#gameplan" data-v="gameplan">Game Plan</a>
       <a href="#report" data-v="report">Report Card</a>
       <a href="#rankings" data-v="rankings">Rankings</a>
       <a href="#startsit" data-v="startsit">Start / Sit</a>
@@ -298,8 +298,8 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
 </header>
 
 <main class="wrap">
-  <!-- PLAYBOOK -->
-  <section class="view" id="v-playbook" hidden><div id="pb"></div></section>
+  <!-- GAME PLAN -->
+  <section class="view" id="v-gameplan" hidden><div id="pb"></div></section>
 
   <!-- REPORT CARD -->
   <section class="view" id="v-report" hidden><div id="rc"></div></section>
@@ -456,8 +456,8 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
     <tr><td><a href="https://github.com/ffverse/ffopportunity" target="_blank" rel="noopener">ffopportunity</a> (ffverse)</td><td style="white-space:normal">Expected fantasy points from usage</td><td style="white-space:normal">CC BY-SA 4.0</td></tr>
     <tr><td><a href="https://github.com/dynastyprocess/data" target="_blank" rel="noopener">DynastyProcess</a></td><td style="white-space:normal">Player ID matching between Sleeper, ESPN and nflverse</td><td style="white-space:normal">GPL-3.0</td></tr>
     <tr><td><a href="https://docs.sleeper.com/" target="_blank" rel="noopener">Sleeper API</a></td><td style="white-space:normal">League import, rosters, lineups, matchups, trending adds</td><td style="white-space:normal">Free for non-commercial use</td></tr>
-    <tr class="outsideOnly"><td>Sleeper projections</td><td style="white-space:normal">Weekly projections in Start / Sit and the Playbook, loaded in your browser</td><td style="white-space:normal">Public but undocumented feed</td></tr>
-    <tr class="outsideOnly"><td>ESPN</td><td style="white-space:normal">Weekly projections in Start / Sit and the Playbook, loaded in your browser</td><td style="white-space:normal">Unofficial public feed</td></tr>
+    <tr class="outsideOnly"><td>Sleeper projections</td><td style="white-space:normal">Weekly projections in Start / Sit and the Game Plan, loaded in your browser</td><td style="white-space:normal">Public but undocumented feed</td></tr>
+    <tr class="outsideOnly"><td>ESPN</td><td style="white-space:normal">Weekly projections in Start / Sit and the Game Plan, loaded in your browser</td><td style="white-space:normal">Unofficial public feed</td></tr>
   </tbody></table></div>
   <p class="note" style="margin-top:12px">Projections, rankings, dynasty values and recommendations are estimates for entertainment and planning, not guarantees.</p>
 </aside></div>
@@ -849,7 +849,7 @@ async function loadOutside(force){
   if(r[1].status==='rejected') OUT.espn = null;
   OUT.status = 'done'; OUT.at = Date.now();
   if(view==='startsit'){ renderSS(); renderMine(); }
-  if(view==='playbook') renderPlaybook();
+  if(view==='gameplan') renderPlaybook();
 }
 const outPts = (c, pos) => c==null ? null : c.pts!=null ? c.pts : compPts(c, pos) + (c.two||0)*2;
 const linePts = (a, pos) => a[0]*0.04 + a[1]*S.ptd + a[2]*S.int + a[3]*0.1 + a[4]*6 + a[5]*(S.rec+(pos==='TE'?S.tep:0)) + a[6]*0.1 + a[7]*6 + a[8]*-2 + (a[9]||0)*2;
@@ -989,7 +989,7 @@ function renderSS(){
 function addSS(id){ if(!id||ss.includes(id)) return; if(ssExample){ss=[];ssExample=false;} setAuto(false); if(ss.length>=4) ss.shift(); ss.push(id); store.set('ss',ss); renderSS(); }
 function setAuto(v){ ssAuto = v; store.set('ssAuto', v); }
 
-/* ---------- the Butler Playbook: this week's game plan for your team ---------- */
+/* ---------- the Game Plan: this week's plan for your team ---------- */
 const TAGW = {Q:'questionable', D:'doubtful', O:'out', IR:'on injured reserve', SUSP:'suspended'};
 const posName = {QB:'Quarterback', RB:'Running back', WR:'Wide receiver', TE:'Tight end', K:'Kicker', DST:'Defense'};
 const posPl = {QB:'quarterbacks', RB:'running backs', WR:'receivers', TE:'tight ends', K:'kicker', DST:'defense'};
@@ -1172,7 +1172,7 @@ let PB_OPEN = {why:false, review:false};
 function renderPlaybook(){
   const el = $('#pb');
   if(!league || !roster.length){
-    el.innerHTML = `<div class="pb-head"><div><div class="eyebrow">The Butler Playbook</div><h1>Week ${M.week} Game Plan</h1><p class="lede">Import your Sleeper league and Butler builds your weekly game plan: your matchup outlook, the three moves that matter most for your team, and why.</p></div></div>
+    el.innerHTML = `<div class="pb-head"><div><div class="eyebrow">Game Plan</div><h1>Week ${M.week}</h1><p class="lede">Import your Sleeper league and Butler builds your weekly game plan: your matchup outlook, the three moves that matter most for your team, and why.</p></div></div>
       <div class="panel"><div class="empty">No league yet.<div style="margin-top:10px"><button class="btn" id="openSleeper4">Import from Sleeper</button></div></div></div>`;
     return;
   }
@@ -1212,7 +1212,7 @@ function renderPlaybook(){
   const more = active.length > 3 ? `<p class="small muted">${active.length-3} more move${active.length-3>1?'s':''}: ${active.slice(3).map(m=>m.title).join('; ')}.</p>` : '';
   const conf = `Butler confidence: <span class="pill ${pb.conf}">${pb.conf}</span>${pb.confWhy.length?` <span class="small muted">(${pb.confWhy.join('; ')})</span>`:''}`;
   PB_CACHE = pb;
-  el.innerHTML = `<div class="pb-head"><div><div class="eyebrow">The Butler Playbook · ${esc(league.name)}</div><h1>Week ${M.week} Game Plan</h1><p class="lede">${M.weekDates ? esc(M.weekDates)+' · ' : ''}Built for your roster, your ${fmtName()} ${S.ltype==='redraft'?'':S.ltype+' '}scoring and lineup, and your opponent, from Butler FF, Sleeper and ESPN projections plus usage, matchup and injury data. ${loading}</p></div>
+  el.innerHTML = `<div class="pb-head"><div><div class="eyebrow">Game Plan · ${esc(league.name)}</div><h1>Week ${M.week}</h1><p class="lede">${M.weekDates ? esc(M.weekDates)+' · ' : ''}Built for your roster, your ${fmtName()} ${S.ltype==='redraft'?'':S.ltype+' '}scoring and lineup, and your opponent, from Butler FF, Sleeper and ESPN projections plus usage, matchup and injury data. ${loading}</p></div>
       <span class="spacer"></span>${leagueSelect()}</div>
     ${dismissedAll ? `<div class="panel"><p style="margin:0">You dismissed this week's game plan. <button class="btn alt sm" id="pbRestore">Show it again</button></p></div>` : `
     ${match}
@@ -1378,7 +1378,7 @@ async function renderReport(){
 /* ---------- my team + lineup (consensus projections; Sleeper lineup check) ---------- */
 const NOPLAY = ['O','D','IR','SUSP'];
 const lockedSet = () => new Set([...(league&&league.taxi||[]), ...(league&&league.reserve||[])]);
-let CONS = null;   // per-render memo of consensus projections (the Playbook evaluates many lineups)
+let CONS = null;   // per-render memo of consensus projections (the Game Plan evaluates many lineups)
 function cons(p){ if(CONS && CONS.has(p.id)) return CONS.get(p.id); const L = lenses(p), v = L.consensus ? L.consensus.v : 0; if(CONS) CONS.set(p.id, v); return v; }
 function startable(p, locked){ return p.opp && !NOPLAY.includes(p.tag) && !locked.has(p.id); }
 const SLOT_RULES = [['QB',['QB']],['RB',['RB']],['WR',['WR']],['TE',['TE']],['FLEX',['RB','WR','TE']],['SFLX',['QB','RB','WR','TE']],['K',['K']],['DST',['DST']]];
@@ -1884,17 +1884,18 @@ function fillSettings(){
 function syncFmt(){ const f = S.rec===1?'ppr':S.rec===0.5?'half':S.rec===0?'std':''; document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.fmt===f)); }
 
 /* ---------- routing / render ---------- */
-const VIEWS = ['playbook','report','rankings','startsit','trade','waivers','draft'];
+const VIEWS = ['gameplan','report','rankings','startsit','trade','waivers','draft'];
 let view = 'rankings';
-const homeView = () => league ? 'playbook' : 'rankings';
+const homeView = () => league ? 'gameplan' : 'rankings';
 function show(v){
+  if(v==='playbook') v = 'gameplan';  // old links and bookmarks
   view = VIEWS.includes(v)?v:homeView();
   VIEWS.forEach(x=> $('#v-'+x).hidden = x!==view);
   document.querySelectorAll('nav.tabs a').forEach(a=>a.setAttribute('aria-current', a.dataset.v===view?'page':'false'));
   renderView();
 }
 function renderView(){
-  if(view==='playbook') renderPlaybook();
+  if(view==='gameplan') renderPlaybook();
   if(view==='report') renderReport();
   if(view==='rankings') renderRankings();
   if(view==='startsit'){ renderSS(); renderMine(); }
