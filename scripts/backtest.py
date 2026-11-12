@@ -1,4 +1,4 @@
-"""Backtest Butler FF projections: for each week W, run the model with only data through W-1 and
+"""Backtest fumble projections: for each week W, run the model with only data through W-1 and
 record each player's projected PPR points next to what he actually scored.
 
 Usage: python3 scripts/backtest.py data backtest/butler.json 2 6

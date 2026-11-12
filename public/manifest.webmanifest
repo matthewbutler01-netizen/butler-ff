@@ -1,6 +1,6 @@
 {
-  "name": "Butler FF",
-  "short_name": "Butler FF",
+  "name": "fumble",
+  "short_name": "fumble",
   "description": "Weekly NFL fantasy rankings, start/sit, trades, waivers and mock drafts. No betting data.",
   "start_url": "./",
   "scope": "./",

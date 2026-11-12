@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Download the public data Butler FF is built from into ./data (nflverse + DynastyProcess ID crosswalk).
+# Download the public data fumble is built from into ./data (nflverse + DynastyProcess ID crosswalk).
 set -euo pipefail
 SEASON="${SEASON:-$( [ "$(date +%-m)" -ge 8 ] && date +%Y || echo $(( $(date +%Y) - 1 )) )}"
 NV=https://github.com/nflverse/nflverse-data/releases/download

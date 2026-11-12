@@ -1,8 +1,8 @@
-"""Butler FF's projections for every completed week, as they stood before that week's games.
+"""fumble's projections for every completed week, as they stood before that week's games.
 
 For each week W from 2 through the last completed week, the model runs with BT_LAST_WEEK=W-1, so it
 sees only games, snaps, injury reports and depth charts available before W kicked off. Week 1 has no
-Butler projection (no games yet). Stat lines are stored raw so the site can score them with each
+fumble projection (no games yet). Stat lines are stored raw so the site can score them with each
 league's own settings.
 
 Usage: python3 scripts/history.py data site/history.json

@@ -26,7 +26,7 @@ head = """<!doctype html><html lang="en"><head><meta charset="utf-8">
 <link rel="icon" href="icons/icon-192.png" type="image/png">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="Butler FF">
+<meta name="apple-mobile-web-app-title" content="fumble">
 <style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style>
 """
 sw = """<script>
@@ -46,7 +46,7 @@ if single:
     print(f"Built self-contained Week {meta['week']} → {out/'butler-ff.html'}")
     sys.exit(0)
 shutil.copyfile(data_path, out / "data.json")
-hist = data_path.parent / "history.json"          # Butler's past weekly projections, for the Report Card
+hist = data_path.parent / "history.json"          # fumble's past weekly projections, for the Report Card
 if hist.exists():
     shutil.copyfile(hist, out / "history.json")
 shutil.copytree(ROOT / "public", out, dirs_exist_ok=True)
