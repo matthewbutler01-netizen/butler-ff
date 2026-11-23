@@ -551,7 +551,12 @@ for r in g[g.week == CUR_WEEK].itertuples():
     t = pd.Timestamp(f"{r.gameday} {r.gametime}") if isinstance(r.gametime, str) else d
     label = f"{d:%a} {t.strftime('%-I:%M %p').replace(':00', '')} ET" if isinstance(r.gametime, str) else f"{d:%a}"
     kick[r.home_team] = kick[r.away_team] = [str(r.gameday), label]
-meta = dict(season=SEASON, week=CUR_WEEK, weekDates=week_dates, kick=kick, lastWeek=LAST_WEEK, built=pd.Timestamp.now(tz="America/Chicago").strftime("%b %-d, %Y %-I:%M %p CT"),
+# this week's NFL slate for the This Week tab: [away, home, gameday, kickoff ET "HH:MM", away score, home score]
+sc_ = lambda x: int(x) if pd.notna(x) else None
+games_wk = sorted([[r.away_team, r.home_team, str(r.gameday), r.gametime if isinstance(r.gametime, str) else "",
+                    sc_(r.away_score), sc_(r.home_score)] for r in g[g.week == CUR_WEEK].itertuples()],
+                  key=lambda x: (x[2], x[3]))
+meta = dict(season=SEASON, week=CUR_WEEK, weekDates=week_dates, kick=kick, games=games_wk, lastWeek=LAST_WEEK, built=pd.Timestamp.now(tz="America/Chicago").strftime("%b %-d, %Y %-I:%M %p CT"),
             depthAsOf=str(dc.dt.max()), injWeek=int(inj.week.max()),
             byes={t: bye[t] for t in teams}, offF={t: round(off_f[t], 3) for t in teams},
             defF={t: round(def_f[t], 3) for t in teams})

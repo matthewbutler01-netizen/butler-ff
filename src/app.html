@@ -217,6 +217,26 @@ textarea.paste{width:100%;min-height:90px;border:1px solid var(--line);backgroun
 .summary{display:flex;gap:18px;flex-wrap:wrap;align-items:baseline;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
 .summary b{font-family:var(--font-data);font-weight:500;font-size:18px}
 .leagueSel{border:1px solid var(--line);background:var(--surface);border-radius:6px;padding:3px 6px;font-weight:600;max-width:100%}
+/* this week: league scoreboard and NFL slate */
+.sb{display:grid;gap:8px;grid-template-columns:repeat(auto-fill,minmax(300px,1fr))}
+.sbm{border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--surface)}
+.sbm.mine{border-color:var(--accent);box-shadow:inset 3px 0 0 var(--accent)}
+.sbm .row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:baseline}
+.sbm .row + .row{margin-top:4px}
+.sbm .nm{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sbm .live{font-family:var(--font-data);font-size:18px;font-weight:500;min-width:52px;text-align:right}
+.sbm .pj{font-family:var(--font-data);font-size:12px;color:var(--muted);min-width:76px;text-align:right}
+.sbm .wpb{display:flex;height:5px;border-radius:3px;overflow:hidden;margin-top:8px;background:var(--sunk)}
+.sbm .wpb i{display:block;background:var(--accent)}
+.slate{list-style:none;margin:0;padding:0}
+.slate li{display:grid;grid-template-columns:92px 1fr;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.slate li:first-child{border-top:0}
+.slate .when{font-family:var(--font-data);font-size:12px;color:var(--muted)}
+.slate .gm{font-weight:600}
+.slate .gm .fin{font-family:var(--font-data);font-weight:500;margin-left:8px}
+.slate .who{font-size:12px;margin-top:3px;color:var(--muted)}
+.slate .who b{color:var(--ink,inherit);font-weight:600}
+.slate .day{display:block;grid-column:1/-1;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:10px 0 2px;border-top:0}
 /* game plan */
 .pb-head{display:flex;align-items:end;gap:12px;flex-wrap:wrap;margin-bottom:14px}
 .pb-head > div{min-width:0}
@@ -287,6 +307,7 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
     </div>
     <nav class="tabs" aria-label="Tools">
       <a href="#gameplan" data-v="gameplan">Game Plan</a>
+      <a href="#week" data-v="week">This Week</a>
       <a href="#report" data-v="report">Report Card</a>
       <a href="#rankings" data-v="rankings">Rankings</a>
       <a href="#startsit" data-v="startsit">Start / Sit</a>
@@ -300,6 +321,9 @@ footer{border-top:1px solid var(--line);padding-block:16px 28px;color:var(--mute
 <main class="wrap">
   <!-- GAME PLAN -->
   <section class="view" id="v-gameplan" hidden><div id="pb"></div></section>
+
+  <!-- THIS WEEK -->
+  <section class="view" id="v-week" hidden><div id="wkv"></div></section>
 
   <!-- REPORT CARD -->
   <section class="view" id="v-report" hidden><div id="rc"></div></section>
@@ -1883,8 +1907,92 @@ function fillSettings(){
 }
 function syncFmt(){ const f = S.rec===1?'ppr':S.rec===0.5?'half':S.rec===0?'std':''; document.querySelectorAll('.seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.fmt===f)); }
 
+
+/* ---------- This Week: every matchup in your league, and the NFL slate ---------- */
+let WK_LIVE = null;   // {key, at, pts:{rid: points}} from Sleeper's live matchup scores
+function etKick(day, hm){   // kickoff "YYYY-MM-DD" + "HH:MM" Eastern -> Date
+  if(!day || !hm) return null;
+  const [y,m,d] = day.split('-').map(Number), [h,mi] = hm.split(':').map(Number);
+  let t = Date.UTC(y, m-1, d, h+5, mi);
+  try{ const nyH = +new Intl.DateTimeFormat('en-US',{timeZone:'America/New_York',hour:'numeric',hourCycle:'h23'}).format(new Date(t));
+       t -= ((nyH - h + 24) % 24) * 3600e3; }catch(e){}
+  return new Date(t);
+}
+async function loadWeekLive(force){
+  if(!league || !league.direct) return;
+  const key = league.id + '|' + M.week;
+  if(!force && WK_LIVE && WK_LIVE.key===key && Date.now() - WK_LIVE.at < 60e3) return;
+  try{
+    const mu = await slFetch(`league/${league.id}/matchups/${M.week}`);
+    const pts = {}; (Array.isArray(mu)?mu:[]).forEach(x => { pts[x.roster_id] = +x.points || 0; });
+    WK_LIVE = {key, at: Date.now(), pts};
+    if(view==='week') renderWeek(true);
+  }catch(e){}
+}
+function renderWeek(fromLive){
+  const el = $('#wkv'); if(!el) return;
+  if(!fromLive){ loadOutside(); loadWeekLive(); }
+  CONS = new Map();
+  const head = `<div class="pb-head"><div><div class="eyebrow">This Week${league?' · '+esc(league.name):''}</div><h1>Week ${M.week}</h1><p class="lede">${M.weekDates?esc(M.weekDates)+' · ':''}Every matchup in your league with projected scores and win chances, and the full NFL slate with your players in each game.</p></div></div>`;
+  const mine = new Set(roster||[]);
+  // ----- league scoreboard -----
+  let board;
+  const mu = league && league.week===M.week ? league.matchups : null;
+  if(!league){
+    board = `<div class="empty">Import your Sleeper league to see every matchup this week.<div style="margin-top:10px"><button class="btn" id="openSleeper4">Import from Sleeper</button></div></div>`;
+  } else if(!mu || !mu.length){
+    board = `<div class="empty">Sleeper has no Week ${M.week} matchups for this league yet${league.week!==M.week?'. Refresh the league to load this week':''}.</div>`;
+  } else {
+    const live = WK_LIVE && WK_LIVE.key===league.id+'|'+M.week ? WK_LIVE.pts : null;
+    const anyLive = live && Object.values(live).some(x => x > 0);
+    const groups = {}; mu.forEach(x => { if(x.mid!=null) (groups[x.mid] = groups[x.mid] || []).push(x); });
+    const tn = rid => league.teams && league.teams[rid] ? league.teams[rid] : {name:'Team '+rid, w:0, l:0};
+    const cards = Object.values(groups).filter(g => g.length===2).map(([a, b]) => {
+      if(b.rid===league.myRid){ [a, b] = [b, a]; }
+      const A = teamProj(a.starters), B = teamProj(b.starters);
+      const pa = phi((A.mu - B.mu) / Math.sqrt(A.sd**2 + B.sd**2 || 1));
+      const row = (x, T, p) => { const t = tn(x.rid);
+        return `<div class="row"><span class="nm">${esc(t.name)} <span class="meta">${t.w}-${t.l}</span></span>
+          <span class="pj">proj ${f1(T.mu)} · ${Math.round(p*100)}%</span>
+          ${anyLive ? `<span class="live">${f1(live[x.rid]||0)}</span>` : ''}</div>`; };
+      const isMine = a.rid===league.myRid;
+      return {isMine, html: `<div class="sbm${isMine?' mine':''}">${row(a, A, pa)}${row(b, B, 1-pa)}<div class="wpb" title="Win chance"><i style="width:${Math.round(pa*100)}%"></i></div></div>`};
+    }).sort((x, y) => y.isMine - x.isMine);
+    board = `<div class="sb">${cards.map(c=>c.html).join('')}</div>
+      <p class="note" style="margin-top:8px">Projections use the lineups each team has set in Sleeper and the consensus of fumble${CFG.outside?', Sleeper and ESPN':''}; players who are out or on bye count zero. ${anyLive?'Big numbers are live Sleeper scores. ':''}${league.median?'Your league also plays the league median each week. ':''}${league.direct?'<button class="btn alt sm" id="wkLive">Refresh scores</button>':''}</p>`;
+  }
+  // ----- NFL slate -----
+  const games = M.games || [];
+  const oppStarters = new Set();
+  if(mu && league){ const me = mu.find(x=>x.rid===league.myRid), o = me && mu.find(x=>x.mid===me.mid && x.rid!==league.myRid);
+    if(o) (o.starters||[]).forEach(id => id && oppStarters.add(id)); }
+  const byTeam = {}; ALL.forEach(p => { if(p.kind==='pick' || !p.t) return; if(mine.has(p.id) || oppStarters.has(p.id)) (byTeam[p.t] = byTeam[p.t] || []).push(p); });
+  const who = teams => { const ps = teams.flatMap(t => byTeam[t]||[]); if(!ps.length) return '';
+    const yours = ps.filter(p=>mine.has(p.id)), theirs = ps.filter(p=>!mine.has(p.id));
+    const nm = p => `${esc(lastName(p.n))} <span class="meta" style="margin-left:2px">${p.p}</span>`;
+    return `<div class="who">${yours.length?`<b>Yours:</b> ${yours.map(nm).join(', ')}`:''}${yours.length&&theirs.length?' · ':''}${theirs.length?`<b>Opponent's:</b> ${theirs.map(nm).join(', ')}`:''}</div>`; };
+  const now = Date.now(); let lastDay = '';
+  const fmtDay = d => d.toLocaleDateString(undefined, {weekday:'long', month:'short', day:'numeric'});
+  const rows = games.map(([aw, hm, day, tm, as, hs]) => {
+    const k = etKick(day, tm), dayLbl = k ? fmtDay(k) : day;
+    let out = '';
+    if(dayLbl !== lastDay){ out += `<li class="day">${esc(dayLbl)}</li>`; lastDay = dayLbl; }
+    const status = as!=null && hs!=null ? `<span class="fin">${as}–${hs} F</span>` : (k && now >= k.getTime() ? `<span class="fin muted">underway</span>` : '');
+    const when = k ? k.toLocaleTimeString(undefined, {hour:'numeric', minute:'2-digit'}) : 'TBD';
+    return out + `<li><span class="when">${esc(when)}</span><div><div class="gm">${esc(aw)} @ ${esc(hm)}${status}</div>${who([aw, hm])}</div></li>`;
+  }).join('');
+  const byes = Object.keys(D.sched).filter(t => D.sched[t][M.week]==='BYE').sort();
+  const byeMine = byes.flatMap(t => (byTeam[t]||[]).filter(p=>mine.has(p.id)));
+  const slate = games.length
+    ? `<ul class="slate">${rows}</ul>${byes.length?`<p class="small muted" style="margin:10px 0 0">On bye: ${byes.map(esc).join(', ')}${byeMine.length?` · <b>yours on bye:</b> ${byeMine.map(p=>esc(p.n)).join(', ')}`:''}</p>`:''}
+       <p class="note" style="margin-top:6px">Kickoff times are in your time zone. Final scores update about hourly.</p>`
+    : `<div class="empty">The NFL schedule for Week ${M.week} shows up after the next data update.</div>`;
+  el.innerHTML = head + `<div class="panel"><h3>League matchups</h3>${board}</div>
+    <div class="panel" style="margin-top:16px"><h3>NFL games</h3>${slate}</div>`;
+}
+
 /* ---------- routing / render ---------- */
-const VIEWS = ['gameplan','report','rankings','startsit','trade','waivers','draft'];
+const VIEWS = ['gameplan','week','report','rankings','startsit','trade','waivers','draft'];
 let view = 'rankings';
 const homeView = () => league ? 'gameplan' : 'rankings';
 function show(v){
@@ -1896,6 +2004,7 @@ function show(v){
 }
 function renderView(){
   if(view==='gameplan') renderPlaybook();
+  if(view==='week') renderWeek();
   if(view==='report') renderReport();
   if(view==='rankings') renderRankings();
   if(view==='startsit'){ renderSS(); renderMine(); }
@@ -1937,6 +2046,7 @@ document.addEventListener('click', e => {
     case 'ssClear': ss=[]; ssExample=false; setAuto(false); store.set('ss',ss); renderSS(); break;
     case 'ssBack': setAuto(true); renderSS(); break;
     case 'openSleeper3': case 'openSleeper4': openSleeper(); break;
+    case 'wkLive': loadWeekLive(true); break;
     case 'openCredits': $('#credScrim').hidden = false; break;
     case 'closeCredits': $('#credScrim').hidden = true; break;
     case 'pbWhyAll': PB_OPEN.why = !PB_OPEN.why; renderPlaybook(); break;
