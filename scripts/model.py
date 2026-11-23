@@ -234,6 +234,9 @@ def splits(pid):
 def wavg(d, c):
     return float((d[c] * d.wt).sum() / d.wt.sum())
 
+# Rest-of-season chance of playing after this week, by injury tag: [next week, later weeks].
+# Out/Doubtful players often miss more than one game, so they don't snap straight back to healthy.
+ROS_RECOVER = {"": [0.97, 0.97], "Q": [0.95, 0.97], "D": [0.80, 0.95], "O": [0.60, 0.92]}
 FRESH = INJ_WEEK == CUR_WEEK          # this week's practice report is already out
 def out_this_week(pid):
     rep_ = inj_last.get(pid, {}).get("report_status")
@@ -375,7 +378,7 @@ for pid, d in sk.groupby("player_id"):
             continue
         games_left += 1
         sos.append(r_[2])
-        # availability recovers: IR assumed back ~wk+5, Out/D back ~next week
+        # availability recovers: IR assumed back ~wk+5; Out/D/Q ramp back over two weeks
         if tag == "IR":
             a = 0.0 if wk < CUR_WEEK + 4 else 0.7
         elif tag == "SUSP":
@@ -383,7 +386,7 @@ for pid, d in sk.groupby("player_id"):
         elif wk == CUR_WEEK:
             a = avail
         else:
-            a = 0.97
+            a = ROS_RECOVER.get(tag, ROS_RECOVER[""])[min(wk - CUR_WEEK, 2) - 1]
         for k in ros:
             ros[k] += r_[3][k] * a
 
@@ -475,6 +478,8 @@ for pid, d in k.groupby("player_id"):
     def kp(wk):
         if (team, wk) not in sched: return None
         opp = sched[(team, wk)][0]
+        # Fourth root on purpose: kicking is mostly noise, and a full-strength matchup factor backtested
+        # slightly worse (Weeks 4-10 2026: MAE 3.91 vs 3.90, weekly rank corr 0.148 vs 0.156).
         return opp, base * math.sqrt(off_f[team] * def_f[opp]) ** 0.5
     r7 = kp(CUR_WEEK)
     ros = sum(kp(wk)[1] for wk in range(CUR_WEEK, 19) if kp(wk))
@@ -548,7 +553,12 @@ for r in g[g.week == CUR_WEEK].itertuples():
     t = pd.Timestamp(f"{r.gameday} {r.gametime}") if isinstance(r.gametime, str) else d
     label = f"{d:%a} {t.strftime('%-I:%M %p').replace(':00', '')} ET" if isinstance(r.gametime, str) else f"{d:%a}"
     kick[r.home_team] = kick[r.away_team] = [str(r.gameday), label]
-meta = dict(season=SEASON, week=CUR_WEEK, weekDates=week_dates, kick=kick, lastWeek=LAST_WEEK, built=pd.Timestamp.now(tz="America/Chicago").strftime("%b %-d, %Y %-I:%M %p CT"),
+# this week's NFL slate for the This Week tab: [away, home, gameday, kickoff ET "HH:MM", away score, home score]
+sc_ = lambda x: int(x) if pd.notna(x) else None
+games_wk = sorted([[r.away_team, r.home_team, str(r.gameday), r.gametime if isinstance(r.gametime, str) else "",
+                    sc_(r.away_score), sc_(r.home_score)] for r in g[g.week == CUR_WEEK].itertuples()],
+                  key=lambda x: (x[2], x[3]))
+meta = dict(season=SEASON, week=CUR_WEEK, weekDates=week_dates, kick=kick, games=games_wk, lastWeek=LAST_WEEK, built=pd.Timestamp.now(tz="America/Chicago").strftime("%b %-d, %Y %-I:%M %p CT"),
             depthAsOf=str(dc.dt.max()), injWeek=int(inj.week.max()),
             byes={t: bye[t] for t in teams}, offF={t: round(off_f[t], 3) for t in teams},
             defF={t: round(def_f[t], 3) for t in teams})
