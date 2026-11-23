@@ -234,6 +234,9 @@ def splits(pid):
 def wavg(d, c):
     return float((d[c] * d.wt).sum() / d.wt.sum())
 
+# Rest-of-season chance of playing after this week, by injury tag: [next week, later weeks].
+# Out/Doubtful players often miss more than one game, so they don't snap straight back to healthy.
+ROS_RECOVER = {"": [0.97, 0.97], "Q": [0.95, 0.97], "D": [0.80, 0.95], "O": [0.60, 0.92]}
 FRESH = INJ_WEEK == CUR_WEEK          # this week's practice report is already out
 def out_this_week(pid):
     rep_ = inj_last.get(pid, {}).get("report_status")
@@ -375,7 +378,7 @@ for pid, d in sk.groupby("player_id"):
             continue
         games_left += 1
         sos.append(r_[2])
-        # availability recovers: IR assumed back ~wk+5, Out/D back ~next week
+        # availability recovers: IR assumed back ~wk+5; Out/D/Q ramp back over two weeks
         if tag == "IR":
             a = 0.0 if wk < CUR_WEEK + 4 else 0.7
         elif tag == "SUSP":
@@ -383,7 +386,7 @@ for pid, d in sk.groupby("player_id"):
         elif wk == CUR_WEEK:
             a = avail
         else:
-            a = 0.97
+            a = ROS_RECOVER.get(tag, ROS_RECOVER[""])[min(wk - CUR_WEEK, 2) - 1]
         for k in ros:
             ros[k] += r_[3][k] * a
 
@@ -475,7 +478,7 @@ for pid, d in k.groupby("player_id"):
     def kp(wk):
         if (team, wk) not in sched: return None
         opp = sched[(team, wk)][0]
-        return opp, base * math.sqrt(off_f[team] * def_f[opp]) ** 0.5
+        return opp, base * math.sqrt(off_f[team] * def_f[opp])  # geometric mean of offense and opp. pts allowed
     r7 = kp(CUR_WEEK)
     ros = sum(kp(wk)[1] for wk in range(CUR_WEEK, 19) if kp(wk))
     kickers.append(dict(id=pid, n=str(d.iloc[-1].player_display_name), p="K", t=team,
